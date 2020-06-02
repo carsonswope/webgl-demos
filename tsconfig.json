@@ -1,0 +1,6 @@
+{
+	"include": ["src/main.ts"],
+	"compilerOptions": {
+		"outFile": "dist/main.js"
+	}
+}

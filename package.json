@@ -1,0 +1,11 @@
+{
+	"name": "webgl-demos",
+	"version": "1.0.0",
+	"author": "Carson Swope <carsonmswope@gmail.com>",
+	"scripts": {
+		"build": "tsc"
+	},
+	"dependencies": {
+		"typescript": "3.9.2"
+	}
+}
