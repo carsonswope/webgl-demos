@@ -3,9 +3,13 @@
 	"version": "1.0.0",
 	"author": "Carson Swope <carsonmswope@gmail.com>",
 	"scripts": {
-		"build": "tsc"
+		"build": "gulp && tsc"
 	},
 	"dependencies": {
-		"typescript": "3.9.2"
+		"typescript": "3.9.2",
+		"gulp": "4.0.2",
+		"gulp-concat": "2.6.1",
+		"through2": "3.0.1",
+		"merge-stream": "2.0.0"
 	}
 }
