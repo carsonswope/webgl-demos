@@ -9,7 +9,8 @@ function make_index(cb) {
 	cb()
 }
 
-const HTML_DELIM = '<!doctype html>'
+const HTML_START_DELIM = '<!doctype html>'
+const HTML_END_DELIM = '</html>'
 const SHADERS_TEMPLATE = '{{ SHADERS }}'
 
 function copy_shaders() {
@@ -32,9 +33,16 @@ function copy_shaders() {
     .pipe(through2.obj(function(file, _, cb) {
       // ewwww :)
       const src = file.contents.toString()
-      const shaders = src.split(HTML_DELIM)[0]
-      const html_template = HTML_DELIM + src.split(HTML_DELIM)[1]
-      file.contents = Buffer.from(html_template.replace(SHADERS_TEMPLATE, shaders))
+      if (src.startsWith(HTML_START_DELIM)) {
+        const shaders = src.split(HTML_END_DELIM)[1]
+        const html_template = src.split(HTML_END_DELIM)[0] + HTML_END_DELIM
+        file.contents = Buffer.from(html_template.replace(SHADERS_TEMPLATE, shaders))
+      } else {
+        const shaders = src.split(HTML_START_DELIM)[0]
+        const html_template = HTML_START_DELIM + src.split(HTML_START_DELIM)[1]
+        file.contents = Buffer.from(html_template.replace(SHADERS_TEMPLATE, shaders))        
+      }
+
       cb(null, file)
     }))
     .pipe(g.dest('dist/'))

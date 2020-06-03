@@ -1,3 +1,7 @@
 #version 300 es
 
-vec4 pdd
+in vec4 position;
+
+void main() {
+  gl_Position = position;
+}

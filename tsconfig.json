@@ -1,6 +1,9 @@
 {
 	"include": ["src/main.ts"],
 	"compilerOptions": {
-		"outFile": "dist/main.js"
-	}
+		"skipLibCheck": true,
+		"outDir": "dist/"
+	},
+	"exclude": ["node_modules"]
 }
+
