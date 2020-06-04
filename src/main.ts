@@ -8,11 +8,23 @@ import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
   const programInfo = twgl.createProgramInfo(gl, ["vs1_vert", "fs1_frag"]);
 
   const arrays = {
-     position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
+     position: [
+     	-1, -1, 0,
+     	 1, -1, 0,
+     	-1,  1, 0,
+     	-1,  1, 0,
+     	 1, -1, 0,
+     	 1,  1, 0],
   };
+
   const bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays);
 
+  // twgl.createBufferFromArray
+
   const render = (time) => {
+
+  	// debugger;
+
   	twgl.resizeCanvasToDisplaySize(<HTMLCanvasElement>gl.canvas)
 
   	gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);

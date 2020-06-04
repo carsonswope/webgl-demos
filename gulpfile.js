@@ -1,19 +1,14 @@
- var g = require('gulp')
- var through2 = require('through2')
- const concat = require('gulp-concat')
+const g = require('gulp')
+const through2 = require('through2')
+const concat = require('gulp-concat')
 const merge = require('merge-stream')
- const path = require('path')
-
-function make_index(cb) {
-	g.src('src/index.html').pipe(g.dest('dist/'))
-	cb()
-}
+const path = require('path')
 
 const HTML_START_DELIM = '<!doctype html>'
 const HTML_END_DELIM = '</html>'
 const SHADERS_TEMPLATE = '{{ SHADERS }}'
 
-function copy_shaders() {
+function embed_shaders_in_html() {
 
 	const a = g.src('src/**/*.vert').pipe(g.src('src/**/*.frag'))
 		.pipe(through2.obj(function(file, _, cb) {
@@ -26,7 +21,6 @@ function copy_shaders() {
         const src = file.contents.toString()
         cb(null, file)
     }))
-  // const b = g.src('src/index.html')
 
   return merge(a, g.src('src/index.html'))
     .pipe(concat('index.html'))
@@ -49,5 +43,10 @@ function copy_shaders() {
 
 }
 
+function copy_styles(cb) {
+  g.src('src/*.css').pipe(g.dest('dist/'))
+  cb()
+}
 
-exports.default = g.series(copy_shaders)
+
+exports.default = g.parallel(embed_shaders_in_html, copy_styles)

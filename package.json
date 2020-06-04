@@ -3,7 +3,11 @@
 	"version": "1.0.0",
 	"author": "Carson Swope <carsonmswope@gmail.com>",
 	"scripts": {
-		"build": "gulp && tsc && webpack"
+		"build": "gulp && tsc && webpack",
+		"watch-build": "npm-watch"
+	},
+	"watch": {
+		"build": "src/**.*"
 	},
 	"dependencies": {
 		"typescript": "3.9.2",
@@ -13,6 +17,7 @@
 		"merge-stream": "2.0.0",
 		"twgl.js": "4.15.2",
 		"webpack": "4.43.0",
-		"webpack-cli": "3.3.11"
+		"webpack-cli": "3.3.11",
+		"npm-watch": "0.6.0"
 	}
 }
