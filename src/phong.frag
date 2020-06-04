@@ -2,8 +2,6 @@
 
 precision mediump float;
 
-// uniform vec4 obj_color;
-
 uniform vec4 cam_pos;
 uniform vec4 light_pos;
 

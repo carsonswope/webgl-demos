@@ -9,5 +9,31 @@
     <canvas id="c"></canvas>
     {{ SHADERS }}
     <script src="bundle.js"></script>
+    <div class="main">
+      <div>
+        <input type="range" 
+             min="1"
+             max="100"
+             value="1"
+             class="slider"
+             id="val1"/>
+        PlaneRotateX
+        <input type="range" 
+             min="-100"
+             max="100"
+             value="0"
+             class="slider"
+             id="val2"/>
+        PlaneMoveX
+        <input type="range" 
+             min="-100"
+             max="100"
+             value="0"
+             class="slider"
+             id="val3"/>
+        PlaneMoveY
+      </div>
+      
+    </div>
   </body>
 </html>

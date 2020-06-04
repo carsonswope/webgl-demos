@@ -2,7 +2,9 @@
 
 import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
 
+import {PhongObj } from './phongshader'
 import { Cube } from './cube'
+import {Terrain1} from './terrain1'
 
 (() => {
 
@@ -13,67 +15,34 @@ import { Cube } from './cube'
   const programInfo = 
       twgl.createProgramInfo(gl, ["phong_vert", "phong_frag"])
   
-  // configure vertex array!
-  const vao = gl.createVertexArray()
-  gl.bindVertexArray(vao)
-
-  const positionBuffer = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-  const posAttrLocation = 
-      gl.getAttribLocation(programInfo.program, "position")
-  gl.enableVertexAttribArray(posAttrLocation)
-  gl.vertexAttribPointer(posAttrLocation, 4, gl.FLOAT, false, 0, 0)
-
-  const normalBuffer = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer)
-  const nAttrLocation = 
-      gl.getAttribLocation(programInfo.program, "normal")
-  gl.enableVertexAttribArray(nAttrLocation)
-  gl.vertexAttribPointer(nAttrLocation, 4, gl.FLOAT, false, 0, 0);
-
-  const colorBuffer = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-  const colAttrLocation = 
-      gl.getAttribLocation(programInfo.program, 'color');
-  gl.enableVertexAttribArray(colAttrLocation)
-  gl.vertexAttribPointer(colAttrLocation, 4, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, null)
-
-  // const colorBuffer = gl.createBuffer()
-  // gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-  // const colAttrLocation = 
-  //     gl.getAttribLocation(programInfo.program, 'color');
-  // gl.enableVertexAttribArray(colAttrLocation)
-  // gl.vertexAttribPointer(colAttrLocation, 4, gl.FLOAT, false, 0, 0);
-  // gl.bindBuffer(gl.ARRAY_BUFFER, null)
-
-  const indexBuffer = gl.createBuffer()
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-  gl.bindVertexArray(null)
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
-
   const cube_info = Cube.vtxes();
+  let cube_obj = new PhongObj(gl, programInfo.program, cube_info);
 
-  // post data!
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cube_info.idxes, gl.STATIC_DRAW)
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+  const terrain_info = Terrain1.make();
+  let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, cube_info.pts, gl.STATIC_DRAW)
-  gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, cube_info.normals, gl.STATIC_DRAW)
-  gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, cube_info.colors, gl.STATIC_DRAW)
-  gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
   gl.enable(gl.DEPTH_TEST)
 
   const render = (time) => {
+
+    const _v: string =
+        (document.getElementById('val1') as HTMLInputElement).value;
+    const v = +_v;
+
+    const _v1: string =
+        (document.getElementById('val2') as HTMLInputElement).value;
+    const v1 = +_v1;
+
+    const _v2: string =
+        (document.getElementById('val3') as HTMLInputElement).value;
+    const v2 = +_v2;
+
+    const plane_rotate_x = v * Math.PI / 100;
+    const plane_tform_x = v1 / 10.
+    const plane_tform_y = v2 / 10.
+
+    // console.log(v);
 
     twgl.resizeCanvasToDisplaySize(canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -97,10 +66,11 @@ import { Cube } from './cube'
     const obj_pos_inv_tpose =
         twgl.m4.transpose(twgl.m4.inverse(obj_pos));
 
-    const light_pos = [0, 4, 0, 1]
+    const light_pos = [0, 10, 0, 1]
 
   	gl.useProgram(programInfo.program)
-    gl.bindVertexArray(vao)
+
+    /*
   	twgl.setUniforms(programInfo, {
       'cam_proj': cam_proj,
       'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
@@ -109,8 +79,23 @@ import { Cube } from './cube'
       'obj_pos_inv_tpose': obj_pos_inv_tpose,
       'light_pos': light_pos,
     })
-
+    gl.bindVertexArray(cube_obj.vao)
     gl.drawElements(gl.TRIANGLES, cube_info.num_idxes, gl.UNSIGNED_SHORT, 0)
+    */
+
+    twgl.setUniforms(programInfo, {
+      'cam_proj': cam_proj,
+      'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
+      'cam_pos_inv': cam_pos_inv,
+      'obj_pos': 
+          twgl.m4.multiply(
+              twgl.m4.rotationX(plane_rotate_x),
+              twgl.m4.translation(twgl.v3.create(plane_tform_x,0,plane_tform_y))),
+      'obj_pos_inv_tpose': twgl.m4.identity(),
+      'light_pos': light_pos,
+    })
+    gl.bindVertexArray(terr_obj.vao)
+    gl.drawElements(gl.TRIANGLES, terr_obj.num_idxes, gl.UNSIGNED_SHORT, 0)
 
   	requestAnimationFrame(render)
   }

@@ -1,12 +1,6 @@
 import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
 
-export class PhongObjInfo {
-	pts: Float32Array;
-	normals: Float32Array;
-	colors: Float32Array;
-	idxes: Uint16Array;
-	num_idxes: number;
-}
+import { PhongObjInfo } from './phongshader'
 
 export class Cube {
 
@@ -84,12 +78,9 @@ export class Cube {
 		info.pts = new Float32Array(out_points);
 		info.normals = new Float32Array(out_normals);
 		info.idxes = new Uint16Array(out_idxes);
-
 		info.colors = new Float32Array(out_colors);
 		info.num_idxes = out_idxes.length;
-
 		return info;
 	}
-
 
 }
