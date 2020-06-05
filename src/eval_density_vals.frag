@@ -25,7 +25,7 @@ void main() {
 		sample_origin.xyz + (in_coord * sample_scale.xyz);
 	
 	// flat plane at y = 0!
-	float density = -in_world_coord.y;
+	float density = -in_world_coord.y + 0.02 + (0.02 * in_world_coord.x * in_world_coord.x);
 
 	// write bits as uint..
 	out_density = floatBitsToUint(density);

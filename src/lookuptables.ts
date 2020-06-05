@@ -47,54 +47,138 @@ export class GeometryGenerator {
 
 	lookup_tables: LookupTables;
 
+	compute_vao: WebGLVertexArrayObject;
+	compute_idxes: WebGLBuffer;
+	compute_uvs: WebGLBuffer;
+
 	gen_density_program: twgl.ProgramInfo;
-	_densities_vao: WebGLVertexArrayObject;
-	_densities_idxes: WebGLBuffer;
-	_densities_uvs: WebGLBuffer;
-
-	densities: WebGLTexture;
 	densities_fbo: WebGLFramebuffer;
+	densities: WebGLTexture;
 
-	densities_dim_x() : number {
-		const e = GeometryGenerator.voxels_dim + 1;
-		return e * e;
-	}
+	gen_caseids_program: twgl.ProgramInfo;
+	caseids_fbo: WebGLFramebuffer;
+	caseids: WebGLTexture;
 
-	densities_dim_y(): number {
-		const e = GeometryGenerator.voxels_dim + 1;
-		return e;
-	}
-
-	densities_size(): number {
-		return this.densities_dim_x() * this.densities_dim_y();
-	}
+	sample_origin = [-16, -16, -16, 1]
+	sample_scale = [1, 1, 1, 0]
 
 	public constructor(private gl: WebGL2RenderingContext) {
 		this.lookup_tables = new LookupTables(gl);
 
 		this.setup_densities_sampler();
+		this.setup_caseids_sampler();
+
+		this.setup_compute_vao();
 
 	}
 
 	public run() {
 
-		const edge_dim: number = (GeometryGenerator.voxels_dim + 1) 
-
 		// 1. generate density values for 33x33x33 grid
-		this.gl.useProgram(this.gen_density_program.program)
-		this.gl.bindVertexArray(this._densities_vao)
-		twgl.setUniforms(this.gen_density_program, {
-      		'sample_origin': [-16, -16, -16, 1],
-      		'sample_scale':  [1, 1, 1, 0],
-		});
-		this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.densities_fbo);
-		this.gl.viewport(0, 0, this.densities_dim_x(), this.densities_dim_y())
+		this.run_densities_sampler();
 
-		this.gl.drawElements(this.gl.TRIANGLES, 6, this.gl.UNSIGNED_SHORT, 0)
+		// 2. for each voxel in grid (32x32x32 voxels) determine case ID 
+		this.run_caseids_sampler();
+
+		// 3. use lookup table for each case ID to generate num-triangles buffer
+		//    for each voxel
+		// 4. run prefix scan on buffer
+	}
+
+	private setup_compute_vao() {
+		const gl = this.gl;
+	  this.compute_vao = gl.createVertexArray()
+	  gl.bindVertexArray(this.compute_vao)
+
+	  this.compute_uvs = gl.createBuffer()
+	  gl.bindBuffer(gl.ARRAY_BUFFER, this.compute_uvs);
+	  let d_uvs = [ -1, -1, 1, -1, -1,  1, 1,  1];
+	  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d_uvs), gl.STATIC_DRAW);
+
+	  // const attr = gl.getAttribLocation(this.gen_density_program.program, 'uv');
+	  const attr = 0; // must be first attribute in shader?
+	  gl.enableVertexAttribArray(attr);
+	  gl.vertexAttribPointer(attr, 2, gl.FLOAT, false, 0, 0);
+
+	  this.compute_idxes = gl.createBuffer()
+	  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.compute_idxes)
+	  let d_idxes = [0, 1, 2, 2, 1, 3]
+	  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(d_idxes), gl.STATIC_DRAW)
+	  gl.bindVertexArray(null)
+	  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+	}
+
+	private setup_densities_sampler() {
+		const gl = this.gl;
+
+		this.gen_density_program = 
+		twgl.createProgramInfo(gl, ['pixel_compute_vert', 'eval_density_vals_frag'])
+
+      this.densities = this.gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.densities);
+	  gl.texImage2D(
+	  	gl.TEXTURE_2D, 0, gl.R32UI, 
+		this.densities_dim_x(), this.densities_dim_y(), 0,
+		gl.RED_INTEGER,
+		gl.UNSIGNED_INT,
+		null)
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+	  this.densities_fbo = gl.createFramebuffer();   
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
+      gl.framebufferTexture2D(
+      	gl.FRAMEBUFFER, 
+      	gl.COLOR_ATTACHMENT0, 
+      	gl.TEXTURE_2D, 
+      	this.densities, 0);
+	}
+
+	private setup_caseids_sampler() {
+		const gl = this.gl;
+		this.gen_caseids_program = 
+			twgl.createProgramInfo(gl, ['pixel_compute_vert', 'eval_caseids_frag']);
+
+		this.caseids = this.gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, this.caseids);
+		gl.texImage2D(
+			gl.TEXTURE_2D, 0, gl.RG16UI,
+			this.caseids_dim_x(), this.caseids_dim_y(), 0, 
+			gl.RG_INTEGER, 
+			gl.UNSIGNED_SHORT, 
+			null);
+
+		this.caseids_fbo = gl.createFramebuffer();
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
+		gl.framebufferTexture2D(
+			gl.FRAMEBUFFER, 
+			gl.COLOR_ATTACHMENT0, 
+			gl.TEXTURE_2D, 
+			this.caseids, 0)
+	}
+
+	private run_densities_sampler() {
+		const gl = this.gl;
+		// const edge_dim: number = (GeometryGenerator.voxels_dim + 1) 
+
+		gl.useProgram(this.gen_density_program.program)
+		gl.bindVertexArray(this.compute_vao)
+		twgl.setUniforms(this.gen_density_program, {
+      		'sample_origin': this.sample_origin,
+      		'sample_scale':  this.sample_scale,
+		});
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
+		gl.viewport(0, 0, this.densities_dim_x(), this.densities_dim_y())
+
+		gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
 
 		/*
-		Read buffer back to CPU
-		let copy_back_buff = new ArrayBuffer(this.densities_size() * 4)
+		// Read buffer back to CPU
+		// size in bytes: 4 bytes = 1 uint or 1 float
+		let copy_back_buff = new ArrayBuffer(this.densities_size() * 4) 
 		this.gl.readPixels(
 			0, 0, 
 			this.densities_dim_x(), 
@@ -106,55 +190,73 @@ export class GeometryGenerator {
 		console.log(copy_back_floats[1])
 		*/
 
-		this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-
-
-		// 2. for each voxel in grid (32x32x32 voxels) determine case ID 
-		// 3. use lookup table for each case ID to generate num-triangles buffer
-		//    for each voxel
-		// 4. run prefix scan on buffer
 	}
 
-	private setup_densities_sampler() {
+
+	private run_caseids_sampler() {
 		const gl = this.gl;
 
-		this.gen_density_program = twgl.createProgramInfo(this.gl, ['eval_density_vals_vert', 'eval_density_vals_frag'])
-  // const programInfo = 
-      // twgl.createProgramInfo(gl, ["phong_vert", "phong_frag"])
+		gl.useProgram(this.gen_caseids_program.program)
+		gl.bindVertexArray(this.compute_vao)
 
-      this.densities = this.gl.createTexture();
-      this.gl.bindTexture(this.gl.TEXTURE_2D, this.densities);
-	  this.gl.texImage2D(
-	  	this.gl.TEXTURE_2D, 0, this.gl.R32UI, 
-		this.densities_dim_x(), this.densities_dim_y(), 0,
-		this.gl.RED_INTEGER,
-		this.gl.UNSIGNED_INT,
-		null)
+		twgl.setUniforms(this.gen_caseids_program, {
+      		'densities_texture': this.densities,
+      		'num_tris_texture': this.lookup_tables.num_out,
+		});
 
-	  this.densities_fbo = this.gl.createFramebuffer();   
-      this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.densities_fbo);
-      this.gl.framebufferTexture2D(this.gl.FRAMEBUFFER, this.gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.densities, 0);
-	
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
+		gl.viewport(0, 0, this.caseids_dim_x(), this.caseids_dim_y())
 
-	  this._densities_vao = gl.createVertexArray()
-	  gl.bindVertexArray(this._densities_vao)
+		gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
 
-	  this._densities_uvs = this.gl.createBuffer()
-	  this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this._densities_uvs);
-	  let d_uvs = [ -1, -1, 1, -1, -1,  1, 1,  1];
-	  this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(d_uvs), gl.STATIC_DRAW);
-	  const attr = this.gl.getAttribLocation(this.gen_density_program.program, 'uv');
-	  this.gl.enableVertexAttribArray(attr);
-	  this.gl.vertexAttribPointer(attr, 2, this.gl.FLOAT, false, 0, 0);
+		/*
+		// Read buffer back to CPU
+		let copy_back_buff = new ArrayBuffer(this.caseids_size() * 4)
+		let copy_back = new Uint16Array(copy_back_buff)
+		this.gl.readPixels(
+			0, 0, 
+			this.caseids_dim_x(), 
+			this.caseids_dim_y(), 
+			this.gl.RG_INTEGER, 
+			this.gl.UNSIGNED_SHORT, 
+			copy_back)
+		console.log(copy_back[1000])
+		*/
 
-	  this._densities_idxes = this.gl.createBuffer()
-	  this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this._densities_idxes)
-	  let d_idxes = [0, 1, 2, 2, 1, 3]
-	  this.gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(d_idxes), gl.STATIC_DRAW)
-	  this.gl.bindVertexArray(null)
-	  this.gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 	}
+
+
+	private densities_dim_x() : number {
+		const e = GeometryGenerator.voxels_dim + 1;
+		return e * e;
+	}
+
+	private densities_dim_y(): number {
+		const e = GeometryGenerator.voxels_dim + 1;
+		return e;
+	}
+
+	private densities_size(): number {
+		return this.densities_dim_x() * this.densities_dim_y();
+	}
+
+	private caseids_dim_x(): number {
+		const e = GeometryGenerator.voxels_dim;
+		return e * e;
+	}
+
+	private caseids_dim_y(): number {
+		const e = GeometryGenerator.voxels_dim;
+		return e;	
+	}
+
+	private caseids_size(): number {
+		return this.caseids_dim_x() * this.caseids_dim_y();
+	}
+
 
 }
