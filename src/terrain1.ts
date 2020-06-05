@@ -79,36 +79,8 @@ export class Terrain1 {
 
 
 				push_point([scale_x * norm_i, fn_res, scale_y * norm_j])
-
-
-				// push_normal([0, 1, 0])
 				push_normal(n2)
-
 				push_color(0, 0.8, 0.2, 1)
-
-				// push_color(Math.abs(n2[0]), Math.abs(n2[1]), Math.abs(n2[2]), 1)
-				// push_color(n2[0], n2[1], n2[2], 1)
-
-				if (i ==0 && j == 0) {
-
-					console.log(d_fn_res)
-					console.log(th)
-					console.log(n)
-					console.log(n2)
-				}
-
-				if (i ==120 && j == 120) {
-
-										console.log(d_fn_res)
-					console.log(th)
-					console.log(n)
-					console.log(n2)
-				}
-				// push_color(0, th, 0, 1)
-
-				// console.log(norm_dist)
-
-				// push_color(n2[0], n2[1], n2[2], 1)
 
 				if (i < dim_x -1 && j < dim_y -1) {
 					out_idxes.push(j * dim_x + i)

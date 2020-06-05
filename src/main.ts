@@ -5,6 +5,7 @@ import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
 import {PhongObj } from './phongshader'
 import { Cube } from './cube'
 import {Terrain1} from './terrain1'
+import {GeometryGenerator} from './lookuptables'
 
 (() => {
 
@@ -21,6 +22,9 @@ import {Terrain1} from './terrain1'
   const terrain_info = Terrain1.make();
   let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
 
+  let geometry_generator = new GeometryGenerator(gl);
+
+  geometry_generator.run()
 
   gl.enable(gl.DEPTH_TEST)
 
