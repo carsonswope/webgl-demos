@@ -42,24 +42,26 @@ export class PhongObj {
 	  gl.bindVertexArray(null)
 	  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
 
-	  this.num_idxes = data.idxes.length;
+	  if (data != null) {
+	  	this.num_idxes = data.idxes.length;
 
-	  // post data!
-	  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxes)
-	  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data.idxes, gl.STATIC_DRAW)
-	  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+		  // post data!
+		  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxes)
+		  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data.idxes, gl.STATIC_DRAW)
+		  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-	  gl.bindBuffer(gl.ARRAY_BUFFER, this.pts)
-	  gl.bufferData(gl.ARRAY_BUFFER, data.pts, gl.STATIC_DRAW)
-	  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		  gl.bindBuffer(gl.ARRAY_BUFFER, this.pts)
+		  gl.bufferData(gl.ARRAY_BUFFER, data.pts, gl.STATIC_DRAW)
+		  gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-	  gl.bindBuffer(gl.ARRAY_BUFFER, this.normals)
-	  gl.bufferData(gl.ARRAY_BUFFER, data.normals, gl.STATIC_DRAW)
-	  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		  gl.bindBuffer(gl.ARRAY_BUFFER, this.normals)
+		  gl.bufferData(gl.ARRAY_BUFFER, data.normals, gl.STATIC_DRAW)
+		  gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-	  gl.bindBuffer(gl.ARRAY_BUFFER, this.colors)
-	  gl.bufferData(gl.ARRAY_BUFFER, data.colors, gl.STATIC_DRAW)
-	  gl.bindBuffer(gl.ARRAY_BUFFER, null)
+		  gl.bindBuffer(gl.ARRAY_BUFFER, this.colors)
+		  gl.bufferData(gl.ARRAY_BUFFER, data.colors, gl.STATIC_DRAW)
+		  gl.bindBuffer(gl.ARRAY_BUFFER, null)
+		}
 
 	}
 }

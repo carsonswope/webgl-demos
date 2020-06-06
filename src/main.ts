@@ -24,7 +24,9 @@ import {GeometryGenerator} from './lookuptables'
 
   let geometry_generator = new GeometryGenerator(gl);
 
-  geometry_generator.run()
+  let gen_obj = new PhongObj(gl, programInfo.program, null);
+
+  geometry_generator.run(gen_obj)
 
   gl.enable(gl.DEPTH_TEST)
 
@@ -47,6 +49,10 @@ import {GeometryGenerator} from './lookuptables'
     const plane_tform_y = v2 / 10.
 
     // console.log(v);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // gl.LINES
 
     twgl.resizeCanvasToDisplaySize(canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -87,6 +93,8 @@ import {GeometryGenerator} from './lookuptables'
     gl.drawElements(gl.TRIANGLES, cube_info.num_idxes, gl.UNSIGNED_SHORT, 0)
     */
 
+    /*
+
     twgl.setUniforms(programInfo, {
       'cam_proj': cam_proj,
       'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
@@ -100,6 +108,23 @@ import {GeometryGenerator} from './lookuptables'
     })
     gl.bindVertexArray(terr_obj.vao)
     gl.drawElements(gl.TRIANGLES, terr_obj.num_idxes, gl.UNSIGNED_SHORT, 0)
+
+    */
+
+    twgl.setUniforms(programInfo, {
+      'cam_proj': cam_proj,
+      'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
+      'cam_pos_inv': cam_pos_inv,
+      'obj_pos': 
+          twgl.m4.multiply(
+              twgl.m4.rotationX(plane_rotate_x),
+              twgl.m4.translation(twgl.v3.create(plane_tform_x,0,plane_tform_y))),
+      'obj_pos_inv_tpose': twgl.m4.identity(),
+      'light_pos': light_pos,
+    })
+    gl.bindVertexArray(gen_obj.vao)
+    gl.drawElements(gl.TRIANGLES, gen_obj.num_idxes, gl.UNSIGNED_SHORT, 0);
+
 
   	requestAnimationFrame(render)
   }

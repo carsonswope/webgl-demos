@@ -8,21 +8,23 @@ out uvec2 out_caseids;
 uniform usampler2D densities_texture;
 uniform usampler2D num_tris_texture;
 
-ivec3 get_offset(int i) {
-	return ivec3(0, 0, 0);
-}
+// ivec3 get_offset(int i) {
+	// return ivec3(0, 0, 0);
+// }
+
+const uvec3 grid_offsets[8] = uvec3[8](
+	uvec3(0, 0, 0),
+	uvec3(0, 0, 1),
+	uvec3(1, 0, 1),
+	uvec3(1, 0, 0),
+	uvec3(0, 1, 0),
+	uvec3(0, 1, 1),
+	uvec3(1, 1, 1),
+	uvec3(1, 1, 0));
 
 void main() {
 
-	const uvec3 grid_offsets[8] = uvec3[8](
-		uvec3(0, 0, 0),
-		uvec3(0, 0, 1),
-		uvec3(1, 0, 1),
-		uvec3(1, 0, 0),
-		uvec3(0, 1, 0),
-		uvec3(0, 1, 1),
-		uvec3(1, 1, 1),
-		uvec3(1, 1, 0));
+
 
 	const uint num_tris_grid_dim = 16u;
 
