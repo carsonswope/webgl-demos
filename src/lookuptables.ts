@@ -24,24 +24,8 @@ export class LookupTables {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    const z = LookupTablesData.tris_out;
-
-
-    /*
-    Copy back for debugging!
-      // Create a framebuffer backed by the texture
-      var framebuffer = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.num_out, 0);
-    let copy_back = new Uint8Array(256)
-    gl.readPixels(0, 0, 16, 16, gl.RED_INTEGER, gl.UNSIGNED_BYTE, copy_back)
-    copy_back.forEach(a => { console.log(a) })
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    */
-
     this.tris_out = gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D, this.tris_out)
-
     gl.texImage2D(
       gl.TEXTURE_2D, 
       0, gl.RGBA16I, 
@@ -72,20 +56,26 @@ export class GeometryGenerator {
   gen_density_program: twgl.ProgramInfo;
   densities_fbo: WebGLFramebuffer;
   densities: WebGLTexture;
+  densities_cpu_raw: ArrayBuffer;
+  densities_cpu: Float32Array;
+
+  gen_caseids_program: twgl.ProgramInfo;
+  caseids_fbo: WebGLFramebuffer;
+  caseids: WebGLTexture;
+  caseids_cpu: Uint32Array;
 
   gen_geometry_program: twgl.ProgramInfo;
   gen_geometry_fbo: WebGLFramebuffer;
   gen_geometry_vtxes: WebGLTexture;
   gen_geometry_idxes: WebGLTexture;
 
-  gen_caseids_program: twgl.ProgramInfo;
-  caseids_fbo: WebGLFramebuffer;
-  caseids: WebGLTexture;
-
-  sample_origin = [-16, -16, -16, 1]
+  sample_origin = [0, 0, 0, 1]
   sample_scale = [1, 1, 1, 0]
 
-  public constructor(private gl: WebGL2RenderingContext) {
+  public constructor(
+      private gl: WebGL2RenderingContext, 
+      private readonly voxel_grid_dim: number) {
+
     this.lookup_tables = new LookupTables(gl);
 
     this.setup_densities_sampler();
@@ -96,62 +86,46 @@ export class GeometryGenerator {
 
   }
 
-  public run(obj: PhongObj) {
+  public run(obj: PhongObj, sample_origin: number[], sample_scale: number[]) {
 
     // Run the whole thing on the CPU!
-    const voxel_grid_dim = 64;
-    const d = voxel_grid_dim;
+    const d = this.voxel_grid_dim;
 
-    // 2d array.
-    // x*y grids put side by side along x axis, as different z layers
-    let densities = new Float32Array(Math.pow(d + 1, 3));
+    this.sample_origin = sample_origin
+    this.sample_scale = sample_scale;
+
+    this.run_densities_sampler();
 
     const get_density_idx = (x: number, y :number, z: number) => {
       const _d = d + 1;
       return (y * _d * _d) + (z * _d) + x;
     }
 
-    this.sample_origin = [-6.5, -6.5, -6.5, 1]
-    this.sample_scale = [0.2, 0.2, 0.2, 0]
-
-    for (let x =0; x < d + 1; x++) {
-        for (let y =0; y < d + 1; y++) {
-          for (let z =0; z < d + 1; z++) {
-            const _x = this.sample_origin[0] + (this.sample_scale[0] * x);
-            const _y = this.sample_origin[1] + (this.sample_scale[1] * y);
-            const _z = this.sample_origin[2] + (this.sample_scale[2] * z);
-            const density = 0.2 + _y + (0.5 * Math.cos(_x * 1.5)) + (0.02 * _z * _z);
-            const i = get_density_idx(x, y, z);
-            densities[i] = density;
-          }
-      }
-    }
-
     const grid_offsets = [
-      [0, 0, 0],
-      [0, 0, 1],
-      [1, 0, 1],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 1, 1],
-      [1, 1, 1],
-      [1, 1, 0]];
+        [0, 0, 0],
+        [0, 0, 1],
+        [1, 0, 1],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 1, 1],
+        [1, 1, 1],
+        [1, 1, 0]];
 
     const edge_vtxes = [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 0],
-      [4, 5],
-      [5, 6],
-      [6, 7],
-      [7, 4],
-      [0, 4],
-      [1, 5],
-      [2, 6],
-      [3, 7]];
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0],
+        [4, 5],
+        [5, 6],
+        [6, 7],
+        [7, 4],
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7]];
 
-    let caseids = new Uint8Array(Math.pow(d, 3));
+    this.run_caseids_sampler();
 
     let vtx_count = 0;
     let vtxes_out = []
@@ -168,7 +142,7 @@ export class GeometryGenerator {
       const off = grid_offsets[v]
       const coord = [x + off[0], y + off[1], z + off[2]]
       const i = get_density_idx(coord[0], coord[1], coord[2])
-      return densities[i];
+      return this.densities_cpu[i];
     }
 
     const get_sample_pos = (x, y, z, v) => {
@@ -181,23 +155,14 @@ export class GeometryGenerator {
       ]
     }
 
+  
     for (let x = 0; x < d; x++) {
       for (let y = 0; y < d; y++) {
         for (let z = 0; z < d; z++) {
 
-
-          let caseid = 0;
-          for (let i = 0; i < 8; i++) {
-            const off = grid_offsets[i];
-            const coord = [x + off[0], y + off[1], z + off[2]];
-            const density_idx = get_density_idx(coord[0], coord[1], coord[2]);
-            const density = densities[density_idx];
-            if (density > 0.) { caseid |= (1 << i) }
-          }
-
           const voxel_idx = get_caseid_idx(x, y, z);
-          caseids[voxel_idx] = caseid;
-          const num_tris = LookupTablesData.num_out[caseid];
+          const caseid = this.caseids_cpu[voxel_idx * 2];
+          const num_tris = this.caseids_cpu[voxel_idx * 2 + 1] ;
 
           for (let i =0; i < num_tris; i++) {
 
@@ -256,8 +221,6 @@ export class GeometryGenerator {
 
 
     obj.num_idxes = idxes_out.length;
-
-    console.log('num triangles', obj.num_idxes / 3)
 
     const gl = this.gl;
 
@@ -329,26 +292,29 @@ export class GeometryGenerator {
     this.gen_density_program = 
     twgl.createProgramInfo(gl, ['pixel_compute_vert', 'eval_density_vals_frag'])
 
-      this.densities = this.gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, this.densities);
+    this.densities = this.gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.densities);
     gl.texImage2D(
-      gl.TEXTURE_2D, 0, gl.R32UI, 
-    this.densities_dim_x(), this.densities_dim_y(), 0,
-    gl.RED_INTEGER,
-    gl.UNSIGNED_INT,
-    null)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.TEXTURE_2D, 0, gl.R32UI, 
+        this.densities_dim_x(), this.densities_dim_y(), 0,
+        gl.RED_INTEGER,
+        gl.UNSIGNED_INT,
+        null)
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
     this.densities_fbo = gl.createFramebuffer();   
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
-      gl.framebufferTexture2D(
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
+    gl.framebufferTexture2D(
         gl.FRAMEBUFFER, 
         gl.COLOR_ATTACHMENT0, 
         gl.TEXTURE_2D, 
         this.densities, 0);
+
+    this.densities_cpu_raw = new ArrayBuffer(this.densities_size() * 4) 
   }
 
   private setup_caseids_sampler() {
@@ -376,6 +342,8 @@ export class GeometryGenerator {
       gl.COLOR_ATTACHMENT0, 
       gl.TEXTURE_2D, 
       this.caseids, 0)
+
+    this.caseids_cpu = new Uint32Array(this.caseids_size() * 2)
   }
 
   private setup_gen_geometry() {
@@ -415,6 +383,7 @@ export class GeometryGenerator {
     twgl.setUniforms(this.gen_density_program, {
           'sample_origin': this.sample_origin,
           'sample_scale':  this.sample_scale,
+          'density_grid_dim': this.voxel_grid_dim + 1,
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
     gl.viewport(0, 0, this.densities_dim_x(), this.densities_dim_y())
@@ -422,20 +391,16 @@ export class GeometryGenerator {
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
 
     // Read buffer back to CPU
-    // size in bytes: 4 bytes = 1 uint or 1 float
-    let copy_back_buff = new ArrayBuffer(this.densities_size() * 4) 
     this.gl.readPixels(
-      0, 0, 
-      this.densities_dim_x(), 
-      this.densities_dim_y(), 
-      this.gl.RED_INTEGER, 
-      this.gl.UNSIGNED_INT, 
-      new Uint32Array(copy_back_buff))
-    let copy_back_floats = new Float32Array(copy_back_buff);
-    console.log(copy_back_floats[1])
+        0, 0, 
+        this.densities_dim_x(), 
+        this.densities_dim_y(), 
+        this.gl.RED_INTEGER, 
+        this.gl.UNSIGNED_INT, 
+        new Uint32Array(this.densities_cpu_raw))
 
+    this.densities_cpu = new Float32Array(this.densities_cpu_raw);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
   }
 
 
@@ -448,23 +413,28 @@ export class GeometryGenerator {
     twgl.setUniforms(this.gen_caseids_program, {
           'densities_texture': this.densities,
           'num_tris_texture': this.lookup_tables.num_out,
+          'voxel_grid_dim': this.voxel_grid_dim,
     });
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
     gl.viewport(0, 0, this.caseids_dim_x(), this.caseids_dim_y())
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
     
+    
     // Read buffer back to CPU
-    let copy_back_buff = new ArrayBuffer(this.caseids_size() * 2 * 4)
-    let copy_back = new Uint32Array(copy_back_buff)
+    // let copy_back_buff = new ArrayBuffer(this.caseids_size() * 2 * 4)
+    // let copy_back = new Uint32Array(copy_back_buff)
     this.gl.readPixels(
       0, 0, 
       this.caseids_dim_x(), 
       this.caseids_dim_y(), 
       this.gl.RG_INTEGER, 
       this.gl.UNSIGNED_INT, 
-      copy_back)
-    console.log(copy_back[1000])
+      this.caseids_cpu);
+      // copy_back);
+      // this.caseids_cpu)
+    // console.log(copy_back[1000])
+
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
@@ -514,29 +484,23 @@ export class GeometryGenerator {
         if (count < 100) {
           console.log('vtx', vtx_f)
         }
-        // console.log('vtx: ', vtx)
       }
 
     }
 
     console.log('vtxes count', count)
 
-    // debugger;
-    // console.log(copy_back[1000])
-
-
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   }
 
 
   private densities_dim_x() : number {
-    const e = GeometryGenerator.voxels_dim + 1;
-    return e * e;
+    const d = this.voxel_grid_dim + 1;
+    return d * d;
   }
 
   private densities_dim_y(): number {
-    const e = GeometryGenerator.voxels_dim + 1;
-    return e;
+    return this.voxel_grid_dim + 1;
   }
 
   private densities_size(): number {
@@ -544,13 +508,13 @@ export class GeometryGenerator {
   }
 
   private caseids_dim_x(): number {
-    const e = GeometryGenerator.voxels_dim;
-    return e * e;
+    // const e = GeometryGenerator.voxels_dim;
+    const d = this.voxel_grid_dim;
+    return d * d;
   }
 
   private caseids_dim_y(): number {
-    const e = GeometryGenerator.voxels_dim;
-    return e; 
+    return this.voxel_grid_dim; 
   }
 
   private caseids_size(): number {
@@ -561,7 +525,7 @@ export class GeometryGenerator {
   // private readonly gen_density_dim_x = 1089;
   // private readonly gen_den
 
-  private readonly voxel_grid_dim = 32;
+  // private readonly voxel_grid_dim = 32;
   private readonly gen_geometry_vtxes_dim_x = 1024;
   private readonly gen_geometry_vtxes_dim_y = 480;
   // (1024 * 480 * 4floats_per_pixel * 4byes_per_float)

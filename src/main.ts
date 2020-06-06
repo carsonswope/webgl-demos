@@ -22,11 +22,20 @@ import {GeometryGenerator} from './lookuptables'
   const terrain_info = Terrain1.make();
   let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
 
-  let geometry_generator = new GeometryGenerator(gl);
+  let geometry_generator = new GeometryGenerator(
+      gl, 
+      32);
+      // 4);
 
   let gen_obj = new PhongObj(gl, programInfo.program, null);
 
-  geometry_generator.run(gen_obj)
+  // geometry_generator.run(gen_obj,
+      // [-2., -2., -2., 1],
+      // [1, 1, 1, 0])
+
+  geometry_generator.run(gen_obj,
+      [-2., -2., -2., 1],
+      [0.25, 0.25, 0.25, 0])
 
   gl.enable(gl.DEPTH_TEST)
 
