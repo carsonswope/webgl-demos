@@ -7,7 +7,7 @@ import { Cube } from './cube'
 import {Terrain1} from './terrain1'
 import {GeometryGenerator} from './lookuptables'
 
-(() => {
+const run_fn = () => {
 
   const canvas = document.querySelector('canvas') as HTMLCanvasElement;
   const gl = canvas.getContext('webgl2')
@@ -24,18 +24,18 @@ import {GeometryGenerator} from './lookuptables'
 
   let geometry_generator = new GeometryGenerator(
       gl, 
-      32);
       // 4);
+      32);
 
   let gen_obj = new PhongObj(gl, programInfo.program, null);
-
-  // geometry_generator.run(gen_obj,
-      // [-2., -2., -2., 1],
-      // [1, 1, 1, 0])
 
   geometry_generator.run(gen_obj,
       [-2., -2., -2., 1],
       [0.25, 0.25, 0.25, 0])
+
+  // geometry_generator.run(gen_obj,
+      // [-1., -1., -1., 1],
+      // [0.5, 0.5, 0.5, 0])
 
   gl.enable(gl.DEPTH_TEST)
 
@@ -139,4 +139,6 @@ import {GeometryGenerator} from './lookuptables'
   }
   requestAnimationFrame(render)
 
-})();
+};
+
+document.addEventListener('DOMContentLoaded', run_fn);

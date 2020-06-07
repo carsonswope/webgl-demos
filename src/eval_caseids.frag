@@ -52,6 +52,9 @@ void main() {
 				case_id / num_tris_grid_dim),
 			0).x;
 
-	// out_caseids = uvec2(case_id, num_tris_out);
-	out_caseids = uvec4(case_id, num_tris_out, 0, 0);
+	out_caseids = uvec4(
+		case_id, 
+		num_tris_out, 
+		num_tris_out, // 2nd entry as seeds for prefix scan
+		0);
 }

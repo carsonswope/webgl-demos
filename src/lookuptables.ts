@@ -2,6 +2,7 @@ import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
 
 import {LookupTablesData} from './lookuptablesdata'
 import {PhongObj} from './phongshader'
+import {GlUtil, TexFormat} from './glutil'
 
 export class LookupTables {
 
@@ -9,37 +10,15 @@ export class LookupTables {
   tris_out: WebGLTexture;
 
   public constructor(gl: WebGL2RenderingContext) {
+    const num_out_f = new TexFormat(gl.R8UI, gl.RED_INTEGER, gl.UNSIGNED_BYTE);
+    this.num_out = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.num_out, num_out_f, 16, 16, new Uint8Array(LookupTablesData.num_out))
 
-    this.num_out = gl.createTexture()
-    gl.bindTexture(gl.TEXTURE_2D, this.num_out)
-    gl.texImage2D(
-      gl.TEXTURE_2D, 
-      0, gl.R8UI, 
-      16, 16, 0,
-      gl.RED_INTEGER,
-      gl.UNSIGNED_BYTE,
-      new Uint8Array(LookupTablesData.num_out))
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    this.tris_out = gl.createTexture()
-    gl.bindTexture(gl.TEXTURE_2D, this.tris_out)
-    gl.texImage2D(
-      gl.TEXTURE_2D, 
-      0, gl.RGBA16I, 
-      5, 256, 0,
-      gl.RGBA_INTEGER,
-      gl.SHORT,
-      new Int16Array(LookupTablesData.tris_out))
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    gl.bindTexture(gl.TEXTURE_2D, null);
-
+    const tris_out_f = new TexFormat(gl.RGBA16I, gl.RGBA_INTEGER, gl.SHORT);
+    this.tris_out = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.tris_out, tris_out_f, 5, 256, new Int16Array(LookupTablesData.tris_out));
   }
 }
 
@@ -61,8 +40,11 @@ export class GeometryGenerator {
 
   gen_caseids_program: twgl.ProgramInfo;
   caseids_fbo: WebGLFramebuffer;
-  caseids: WebGLTexture;
-  caseids_cpu: Uint32Array;
+  caseids0: WebGLTexture;
+  caseids1: WebGLTexture;
+  caseid_current = 0;
+  caseids_prefix_scan_reduce_program: twgl.ProgramInfo;
+  caseids_prefix_scan_combine_program: twgl.ProgramInfo;
 
   gen_geometry_program: twgl.ProgramInfo;
   gen_geom_ids: WebGLBuffer;
@@ -79,6 +61,8 @@ export class GeometryGenerator {
   sample_origin = [0, 0, 0, 1]
   sample_scale = [1, 1, 1, 0]
 
+  TexFormat_RGBA32UI: TexFormat;
+
   public constructor(
       private gl: WebGL2RenderingContext, 
       private readonly voxel_grid_dim: number) {
@@ -90,6 +74,12 @@ export class GeometryGenerator {
     this.setup_gen_geometry();
 
     this.setup_compute_vao();
+
+    this.TexFormat_RGBA32UI = {
+      internal_format: gl.RGBA32UI,
+      format: gl.RGBA_INTEGER,
+      type: gl.UNSIGNED_INT,
+    };
 
   }
 
@@ -106,61 +96,31 @@ export class GeometryGenerator {
 
     this.run_caseids_sampler();
 
-    this.run_caseids_prefix_scan();
+    const num_tris_out = this.run_caseids_prefix_scan();
     
     this.run_gen_geometry(obj);
 
-
-    const get_density_idx = (x: number, y :number, z: number) => {
-      const _d = d + 1;
-      return (y * _d * _d) + (z * _d) + x;
-    }
-
-    let vtx_count = 0;
-    let vtxes_out = []
     let normals_out = []
     let idxes_out = []
     let colors_out = []
 
-    // by voxel coord
-    const get_caseid_idx = (x: number, y: number, z: number) => {
-      return (y * d * d) + (z * d) + x;
-   }
+   for (let i =0; i < num_tris_out; i++) {
+      const _i = i * 12;
+      const p0 = this.gen_geom_floats.slice(_i, _i + 4);
+      const p1 = this.gen_geom_floats.slice(_i +4, _i + 8);
+      const p2 = this.gen_geom_floats.slice(_i +8, _i + 12);
 
-    for (let y = 0; y < d; y++) {
-      for (let z = 0; z < d; z++) {
-        for (let x = 0; x < d; x++) {
+      const u = twgl.v3.subtract(p1, p0);
+      const v = twgl.v3.subtract(p2, p0);
+      const n = twgl.v3.normalize(twgl.v3.cross(u, v));
 
-          const voxel_idx = get_caseid_idx(x, y, z);
-          const caseid = this.caseids_cpu[voxel_idx * 4];
-          const num_tris = this.caseids_cpu[voxel_idx * 4 + 1];
-          const start_tri_idx = this.caseids_cpu[voxel_idx * 4 + 2];
-
-          for (let i =0; i < num_tris; i++) {
-
-            const p_idx = (start_tri_idx + i) * 3 * 4;
-
-            const p0 = this.gen_geom_floats.slice(p_idx, p_idx + 4);
-            const p1 = this.gen_geom_floats.slice(p_idx + 4, p_idx + 8);
-            const p2 = this.gen_geom_floats.slice(p_idx + 8, p_idx + 12);
-
-            const u = twgl.v3.subtract(p1, p0);
-            const v = twgl.v3.subtract(p2, p0);
-            const n = twgl.v3.normalize(twgl.v3.cross(u, v));
-
-            for (let j =0;  j < 3; j++) {
-              const idx = idxes_out.length; // 0, 1, 2, 3, 4, 5... blah
-              idxes_out.push(idx);
-              normals_out.push([n[0], n[1], n[2], 0]);
-              colors_out.push([0., 0.3, 0.8, 1.]);
-            }
-
-          }
-
-        }
+      for (let j =0;  j < 3; j++) {
+        const idx = idxes_out.length; // 0, 1, 2, 3, 4, 5... blah
+        idxes_out.push(idx);
+        normals_out.push([n[0], n[1], n[2], 0]);
+        colors_out.push([0., 0.3, 0.8, 1.]);
       }
-    }
-
+   }
 
     obj.num_idxes = idxes_out.length;
 
@@ -217,19 +177,9 @@ export class GeometryGenerator {
     this.gen_density_program = 
     twgl.createProgramInfo(gl, ['pixel_compute_vert', 'eval_density_vals_frag'])
 
-    this.densities = this.gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.densities);
-    gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.R32UI, 
-        this.densities_dim_x(), this.densities_dim_y(), 0,
-        gl.RED_INTEGER,
-        gl.UNSIGNED_INT,
-        null)
-
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const densities_tex_f = new TexFormat(gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT);
+    this.densities = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(gl, this.densities, densities_tex_f, this.densities_dim_x(), this.densities_dim_y(), null);
 
     this.densities_fbo = gl.createFramebuffer();   
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
@@ -247,18 +197,14 @@ export class GeometryGenerator {
     this.gen_caseids_program = 
       twgl.createProgramInfo(gl, ['pixel_compute_vert', 'eval_caseids_frag']);
 
-    this.caseids = this.gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.caseids);
-    gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA32UI,
-        this.caseids_dim_x(), this.caseids_dim_y(), 0, 
-        gl.RGBA_INTEGER, 
-        gl.UNSIGNED_INT, 
-        null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const caseids_tex_f = new TexFormat(gl.RGBA32UI, gl.RGBA_INTEGER, gl.UNSIGNED_INT);
+    // 2 copies of caseids texture, so prefix scan can go back and forth
+    this.caseids0 = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.caseids0, caseids_tex_f, this.caseids_dim_x(), this.caseids_dim_y(), null);
+    this.caseids1 = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.caseids1, caseids_tex_f, this.caseids_dim_x(), this.caseids_dim_y(), null);
 
     this.caseids_fbo = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
@@ -266,9 +212,16 @@ export class GeometryGenerator {
         gl.FRAMEBUFFER, 
         gl.COLOR_ATTACHMENT0, 
         gl.TEXTURE_2D, 
-        this.caseids, 0)
+        this.caseids0, 0)
 
-    this.caseids_cpu = new Uint32Array(this.caseids_size() * 4)
+    // this.caseids_cpu = new Uint32Array(this.caseids_size() * 4)
+
+    this.caseids_prefix_scan_reduce_program =
+      twgl.createProgramInfo(gl, ['caseids_prefix_scan_reduce_vert', 'caseids_prefix_scan_reduce_frag'])
+
+    this.caseids_prefix_scan_combine_program =
+      twgl.createProgramInfo(gl, ['caseids_prefix_scan_combine_vert', 'caseids_prefix_scan_combine_frag'])
+
   }
 
   private setup_gen_geometry() {
@@ -277,18 +230,10 @@ export class GeometryGenerator {
     this.gen_geometry_program = 
       twgl.createProgramInfo(gl, ['gen_geometry2_vert', 'gen_geometry2_frag']);
 
-    this.gen_geometry_vtxes = this.gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.gen_geometry_vtxes);
-    gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA32UI,
-        this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y(), 0,
-        gl.RGBA_INTEGER,
-        gl.UNSIGNED_INT,
-        null)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const gen_geometry_vtxes_tex_f = new TexFormat(gl.RGBA32UI, gl.RGBA_INTEGER, gl.UNSIGNED_INT);
+    this.gen_geometry_vtxes = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.gen_geometry_vtxes, gen_geometry_vtxes_tex_f, this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y(), null);
 
     this.gen_geometry_fbo = gl.createFramebuffer();   
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_geometry_fbo);
@@ -385,40 +330,63 @@ export class GeometryGenerator {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
     gl.viewport(0, 0, this.caseids_dim_x(), this.caseids_dim_y())
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
-    
-    this.gl.readPixels(
-      0, 0, 
-      this.caseids_dim_x(), 
-      this.caseids_dim_y(), 
-      this.gl.RGBA_INTEGER, 
-      this.gl.UNSIGNED_INT, 
-      this.caseids_cpu);
-
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-private run_caseids_prefix_scan() {
-  const gl = this.gl;
-
-    // do it on the CPU for now!
+  private run_caseids_prefix_scan(): number {
+    const gl = this.gl;
     const d = this.voxel_grid_dim;
     const d3 = d * d * d;
-    let current_count = 0;
-    for (let i =0; i < d3; i++) {
-      this.caseids_cpu[i * 4 + 2] = current_count;
-      current_count += this.caseids_cpu[i * 4 + 1];
-    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.caseids_fbo);
 
-    // and copy back to the texture in B channel
-    gl.bindTexture(gl.TEXTURE_2D, this.caseids);
-    gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA32UI,
-        this.caseids_dim_x(), this.caseids_dim_y(), 0, 
-        gl.RGBA_INTEGER, 
-        gl.UNSIGNED_INT, 
-        this.caseids_cpu);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-}
+    const num_stages: number = (Math as any).log2(d3);
+    let current_program = this.caseids_prefix_scan_reduce_program;
+    gl.useProgram(current_program.program)
+    let global_stage_count = 0;
+    const execute_stage = (s: number) => {
+          const even = global_stage_count++ % 2 == 0;
+          const in_tex = even  ? this.caseids0 : this.caseids1;
+          const out_tex = even ? this.caseids1 : this.caseids0;
+          gl.framebufferTexture2D(
+              gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, out_tex, 0);
+          twgl.setUniforms(current_program, {
+            'img_in': in_tex,
+            'dim': [this.caseids_dim_x(), this.caseids_dim_y()],
+            'stage': s,
+            'num_stages': num_stages,
+          });
+          gl.viewport(0, 0, this.caseids_dim_x(), this.caseids_dim_y())
+          const invoke_count = this.caseids_dim_x() * this.caseids_dim_y() / (1 << s);
+          gl.drawArrays(gl.POINTS, 0, invoke_count);
+    };
+
+    for (let i =0; i < num_stages; i++) { execute_stage(i); }
+
+    current_program = this.caseids_prefix_scan_combine_program;
+    gl.useProgram(current_program.program)
+
+    for (let i = num_stages - 1; i >= 0; i--) { execute_stage(i); }
+
+    gl.useProgram(null);
+
+    // read the last pixel to determine number of triangles generated!
+    let copy_back_buff =  new ArrayBuffer(4 * 4)
+    let copy_back = new Uint32Array(copy_back_buff);
+    this.gl.readPixels(
+        this.caseids_dim_x() - 1, 
+        this.caseids_dim_y() - 1, 
+        1,
+        1,
+        this.gl.RGBA_INTEGER, 
+        this.gl.UNSIGNED_INT, 
+        copy_back)
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    const num_tris_out = copy_back[2]; // Z value
+    this.caseid_current = global_stage_count % 2;
+    return num_tris_out;
+  }
 
   private run_gen_geometry(obj: PhongObj) {
     const gl = this.gl;
@@ -427,7 +395,7 @@ private run_caseids_prefix_scan() {
     gl.bindVertexArray(this.gen_geom_vao);
     twgl.setUniforms(this.gen_geometry_program, {
           'out_dim': [this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y()],
-          'case_ids': this.caseids,
+          'case_ids': this.get_current_caseids_tex(),
           'voxel_grid_dim': this.voxel_grid_dim,
           'tris_out': this.lookup_tables.tris_out,
           'densities': this.densities,
@@ -475,7 +443,6 @@ private run_caseids_prefix_scan() {
   }
 
   private caseids_dim_x(): number {
-    // const e = GeometryGenerator.voxels_dim;
     const d = this.voxel_grid_dim;
     return d * d;
   }
@@ -493,6 +460,14 @@ private run_caseids_prefix_scan() {
   }
   private gen_geom_vtxes_dim_y() {
     return this.voxel_grid_dim * 3 * 5;
+  }
+
+  private get_current_caseids_tex(): WebGLTexture {
+    return this.caseid_current == 0 ? this.caseids0 : this.caseids1;
+  }
+
+  private get_back_caseids_tex(): WebGLTexture {
+    return this.caseid_current == 0 ? this.caseids1 : this.caseids0;
   }
 
   private readonly grid_offsets = [
