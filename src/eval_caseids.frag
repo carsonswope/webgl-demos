@@ -3,7 +3,7 @@
 precision mediump float;
 precision mediump usampler2D;
 
-out uvec2 out_caseids;
+out uvec4 out_caseids;
 
 uniform usampler2D densities_texture;
 uniform usampler2D num_tris_texture;
@@ -53,5 +53,5 @@ void main() {
 			0).x;
 
 	// out_caseids = uvec2(case_id, num_tris_out);
-	out_caseids = uvec2(case_id, num_tris_out);
+	out_caseids = uvec4(case_id, num_tris_out, 0, 0);
 }

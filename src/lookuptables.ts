@@ -95,6 +95,7 @@ export class GeometryGenerator {
 
     // Run the whole thing on the CPU!
     const d = this.voxel_grid_dim;
+    const d3 = d * d * d;
 
     this.sample_origin = sample_origin
     this.sample_scale = sample_scale;
@@ -102,6 +103,13 @@ export class GeometryGenerator {
     this.run_densities_sampler();
 
     this.run_caseids_sampler();
+
+    this.run_caseids_prefix_scan();
+
+    // run prefix scan on CPU!
+
+    this.run_caseids_sampler();
+    // debugger;
 
     
     this.run_gen_geometry();
@@ -171,8 +179,8 @@ export class GeometryGenerator {
         for (let z = 0; z < d; z++) {
 
           const voxel_idx = get_caseid_idx(x, y, z);
-          const caseid = this.caseids_cpu[voxel_idx * 2];
-          const num_tris = this.caseids_cpu[voxel_idx * 2 + 1] ;
+          const caseid = this.caseids_cpu[voxel_idx * 4];
+          const num_tris = this.caseids_cpu[voxel_idx * 4 + 1] ;
 
           for (let i =0; i < num_tris; i++) {
 
@@ -231,6 +239,8 @@ export class GeometryGenerator {
 
 
     obj.num_idxes = idxes_out.length;
+
+    console.log('gen num tris', idxes_out.length / 3)
 
     const gl = this.gl;
 
@@ -335,9 +345,9 @@ export class GeometryGenerator {
     this.caseids = this.gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.caseids);
     gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RG32UI,
+        gl.TEXTURE_2D, 0, gl.RGBA32UI,
         this.caseids_dim_x(), this.caseids_dim_y(), 0, 
-        gl.RG_INTEGER, 
+        gl.RGBA_INTEGER, 
         gl.UNSIGNED_INT, 
         null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -353,7 +363,7 @@ export class GeometryGenerator {
         gl.TEXTURE_2D, 
         this.caseids, 0)
 
-    this.caseids_cpu = new Uint32Array(this.caseids_size() * 2)
+    this.caseids_cpu = new Uint32Array(this.caseids_size() * 4)
   }
 
   private setup_gen_geometry() {
@@ -362,13 +372,13 @@ export class GeometryGenerator {
     this.gen_geometry_program = 
       twgl.createProgramInfo(gl, ['gen_geometry2_vert', 'gen_geometry2_frag']);
 
-      gl.lineWidth(1.2);
+      // gl.lineWidth(1.2);
 
     this.gen_geometry_vtxes = this.gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.gen_geometry_vtxes);
     gl.texImage2D(
         gl.TEXTURE_2D, 0, gl.RGBA32UI, 
-        4, 4, 0,
+        8, 8, 0,
         // this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y(), 0,
         gl.RGBA_INTEGER,
         gl.UNSIGNED_INT,
@@ -396,10 +406,14 @@ export class GeometryGenerator {
       0, 0, 0, 0,
       1, 2, 0, 0,
       2, 1, 0, 0,
-      3, 3, 0, 0
+      3, 3, 0, 0,
+      7, 7, 0, 0,
+      0, 7, 0, 0,
+      7, 0, 0, 0,
+      5, 1, 0, 0,
     ];
     let gen_geom_idxs = [
-      0, 1, 2, 3
+      0, 1, 2, 3, 4, 5, 6, 7
     ];
 
 
@@ -490,49 +504,68 @@ export class GeometryGenerator {
       0, 0, 
       this.caseids_dim_x(), 
       this.caseids_dim_y(), 
-      this.gl.RG_INTEGER, 
+      this.gl.RGBA_INTEGER, 
       this.gl.UNSIGNED_INT, 
       this.caseids_cpu);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+private run_caseids_prefix_scan() {
+  const gl = this.gl;
+
+    // do it on the CPU for now!
+    const d = this.voxel_grid_dim;
+    const d3 = d * d * d;
+    let current_count = 0;
+    for (let i =0; i < d3; i++) {
+      this.caseids_cpu[i * 4 + 2] = current_count;
+      current_count += this.caseids_cpu[i * 4 + 1];
+    }
+
+    // and copy back to the texture in B channel
+    gl.bindTexture(gl.TEXTURE_2D, this.caseids);
+    gl.texImage2D(
+        gl.TEXTURE_2D, 0, gl.RGBA32UI,
+        this.caseids_dim_x(), this.caseids_dim_y(), 0, 
+        gl.RGBA_INTEGER, 
+        gl.UNSIGNED_INT, 
+        this.caseids_cpu);
+
+    gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
   private run_gen_geometry() {
     const gl = this.gl;
 
-    // gl.disable(gl.DEPTH_TEST);
-
-
     gl.useProgram(this.gen_geometry_program.program);
     gl.bindVertexArray(this.gen_geom_vao);
-    // gl.bindVertexArray(this.gen_geom_vao);
     twgl.setUniforms(this.gen_geometry_program, {
           // 'out_dim': [this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y()],
-          // 'out_dim': [4, 4],
+          'out_dim': [8, 8],
           // 'voxel_grid_dim': this.voxel_grid_dim,
     });
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_geometry_fbo)
 
-    gl.disable(gl.SAMPLE_COVERAGE);
+    // gl.disable(gl.SAMPLE_COVERAGE);
 
 
-    gl.viewport(0, 0, 4, 4)
-    gl.drawElements(gl.POINTS, 4, gl.UNSIGNED_SHORT, 0)
+    gl.viewport(0, 0, 8, 8)
+    gl.drawElements(gl.POINTS, 8, gl.UNSIGNED_SHORT, 0)
 
-    // debugger;
 
 
     gl.bindVertexArray(null);
     gl.useProgram(null)
 
     // Read buffer back to CPU
-    let copy_back_buff = new ArrayBuffer(4 * 4 * 4 * 4)
+    let copy_back_buff = new ArrayBuffer(8 * 8 * 4 * 4)
     let copy_back = new Uint32Array(copy_back_buff)
     this.gl.readPixels(
       0, 0, 
-      4,
-      4,
+      8,
+      8,
       this.gl.RGBA_INTEGER, 
       this.gl.UNSIGNED_INT, 
       copy_back)
@@ -548,10 +581,10 @@ export class GeometryGenerator {
     });
 
     let copy_back_min = [];
-    for (let i =0; i < 4; i++) {
+    for (let i =0; i < 8; i++) {
       let copy_back_min = [];
-      for (let j =0; j < 4; j++) {
-        copy_back_min.push(copy_back[(i * 16) + (j * 4)]);
+      for (let j =0; j < 8; j++) {
+        copy_back_min.push(copy_back[(i * 32) + (j * 4)]);
       }
       console.log(copy_back_min);
     }

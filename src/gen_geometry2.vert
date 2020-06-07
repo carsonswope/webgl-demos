@@ -7,27 +7,23 @@
 in uvec4 a_id;
 
 // dimensions of output image of RGBA32F values (1 vtx per!)
-uniform uvec2 out_dim;
+uniform vec2 out_dim;
 
 uniform uint voxel_grid_dim;
+
+// given a coord position on output image, put vtx at proper NDC
+// so the (single point) fragment it generates is at the coord.
+void set_coord_out(uvec2 c) {
+	vec2 coord = (2. * vec2(c) / (out_dim - 1.)) - 1.;
+	gl_Position = vec4(coord, 0, 1);
+}
 
 void main() { 
 
 	// desired coord on output image!
-	float x = float(a_id.x);
-	float y = float(a_id.y);
+	set_coord_out(a_id.xy);
 
-	float x_norm = (((x) / float(4 - 1)) * 2.) - 1.;
-	float y_norm = (((y) / float(4 - 1)) * 2.) - 1.;
-
-	// float px = (x == 0) ? 0. : 3.;
-	// float py = (y == 0) ? 0. : 3.;
-
-	// float ndc_x = (x == 0u) ? -1. : 0.75;
-	// float ndc_y = (y == 0u) ? -1. : 0.75;
-
-	gl_Position = vec4(x_norm, y_norm, 0, 1);
-
+	// just a little bigger than a pixel so rasterizer always picks it up!
 	gl_PointSize = 1.2;
 
 
