@@ -54,9 +54,15 @@ export class GeometryGenerator {
   gen_geometry_fbo: WebGLFramebuffer;
   gen_geometry_vtxes: WebGLTexture;
   gen_geometry_idxes: WebGLTexture;
-
   gen_geom_floats: Float32Array;
   gen_geom_ints: Uint32Array;
+
+  gen_normals_program: twgl.ProgramInfo;
+  gen_normals_fbo: WebGLFramebuffer;
+  gen_normals_tex: WebGLBuffer;
+  gen_colors_tex: WebGLBuffer;
+
+  z_density_mult = 2.2;
 
   sample_origin = [0, 0, 0, 1]
   sample_scale = [1, 1, 1, 0]
@@ -72,8 +78,8 @@ export class GeometryGenerator {
     this.setup_densities_sampler();
     this.setup_caseids_sampler();
     this.setup_gen_geometry();
-
     this.setup_compute_vao();
+    this.setup_gen_normals();
 
     this.TexFormat_RGBA32UI = {
       internal_format: gl.RGBA32UI,
@@ -83,9 +89,22 @@ export class GeometryGenerator {
 
   }
 
+  public init_idxes(obj: PhongObj) {
+    const d = this.voxel_grid_dim;
+    const d3 = d * d * d;
+
+    let idxs = []
+    for (let i =0; i < d3; i++) { idxs.push(i) }
+
+    const gl = this.gl;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj.idxes);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idxs), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+  }
+
   public run(obj: PhongObj, sample_origin: number[], sample_scale: number[]) {
 
-    // Run the whole thing on the CPU!
+    const gl = this.gl;
     const d = this.voxel_grid_dim;
     const d3 = d * d * d;
 
@@ -93,58 +112,11 @@ export class GeometryGenerator {
     this.sample_scale = sample_scale;
 
     this.run_densities_sampler();
-
     this.run_caseids_sampler();
-
     const num_tris_out = this.run_caseids_prefix_scan();
-    
-    this.run_gen_geometry(obj);
-
-    let normals_out = []
-    let idxes_out = []
-    let colors_out = []
-
-   for (let i =0; i < num_tris_out; i++) {
-      const _i = i * 12;
-      const p0 = this.gen_geom_floats.slice(_i, _i + 4);
-      const p1 = this.gen_geom_floats.slice(_i +4, _i + 8);
-      const p2 = this.gen_geom_floats.slice(_i +8, _i + 12);
-
-      const u = twgl.v3.subtract(p1, p0);
-      const v = twgl.v3.subtract(p2, p0);
-      const n = twgl.v3.normalize(twgl.v3.cross(u, v));
-
-      for (let j =0;  j < 3; j++) {
-        const idx = idxes_out.length; // 0, 1, 2, 3, 4, 5... blah
-        idxes_out.push(idx);
-        normals_out.push([n[0], n[1], n[2], 0]);
-        colors_out.push([0., 0.3, 0.8, 1.]);
-      }
-   }
-
-    obj.num_idxes = idxes_out.length;
-
-    const gl = this.gl;
-
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj.idxes);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idxes_out), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-    
-    let normals_flat = []
-    normals_out.forEach(n => n.forEach(c => normals_flat.push(c)));
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.normals);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals_flat), gl.STATIC_DRAW)
-
-    let colors_flat = []
-    colors_out.forEach(c => c.forEach(v => colors_flat.push(v)));
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.colors);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors_flat), gl.STATIC_DRAW)
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-    
+    this.run_gen_geometry(obj, num_tris_out);
+    this.run_gen_normals(obj, num_tris_out); // and colors
+    obj.num_idxes = num_tris_out * 3;
   }
 
   private setup_compute_vao() {
@@ -214,14 +186,45 @@ export class GeometryGenerator {
         gl.TEXTURE_2D, 
         this.caseids0, 0)
 
-    // this.caseids_cpu = new Uint32Array(this.caseids_size() * 4)
-
     this.caseids_prefix_scan_reduce_program =
       twgl.createProgramInfo(gl, ['caseids_prefix_scan_reduce_vert', 'caseids_prefix_scan_reduce_frag'])
 
     this.caseids_prefix_scan_combine_program =
       twgl.createProgramInfo(gl, ['caseids_prefix_scan_combine_vert', 'caseids_prefix_scan_combine_frag'])
 
+  }
+
+  private setup_gen_normals() {  
+    const gl = this.gl;
+
+    this.gen_normals_program = 
+      twgl.createProgramInfo(gl, ['gen_normals_vert', 'gen_normals_frag']);
+
+    const gen_normals_tex_f = new TexFormat(gl.RGBA32UI, gl.RGBA_INTEGER, gl.UNSIGNED_INT);
+    this.gen_normals_tex = GlUtil.init_tex(gl);
+    // geom vtxes same dim as geom normals
+    GlUtil.tex_img_2d(
+        gl, this.gen_normals_tex, gen_normals_tex_f, this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y(), null);
+
+    this.gen_colors_tex = GlUtil.init_tex(gl);
+    GlUtil.tex_img_2d(
+        gl, this.gen_colors_tex, gen_normals_tex_f, this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y(), null);
+
+    this.gen_normals_fbo = gl.createFramebuffer();   
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_normals_fbo);
+    gl.framebufferTexture2D(
+        gl.FRAMEBUFFER, 
+        gl.COLOR_ATTACHMENT0, 
+        gl.TEXTURE_2D, 
+        this.gen_normals_tex, 0);
+
+    gl.framebufferTexture2D(
+        gl.FRAMEBUFFER, 
+        gl.COLOR_ATTACHMENT1, 
+        gl.TEXTURE_2D, 
+        this.gen_colors_tex, 0);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   private setup_gen_geometry() {
@@ -245,7 +248,6 @@ export class GeometryGenerator {
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    // const gl = this.gl;
     this.gen_geom_vao = gl.createVertexArray()
     gl.bindVertexArray(this.gen_geom_vao)
 
@@ -295,6 +297,7 @@ export class GeometryGenerator {
           'sample_origin': this.sample_origin,
           'sample_scale':  this.sample_scale,
           'density_grid_dim': this.voxel_grid_dim + 1,
+          'z_density_mult': this.z_density_mult,
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
     gl.viewport(0, 0, this.densities_dim_x(), this.densities_dim_y())
@@ -372,14 +375,7 @@ export class GeometryGenerator {
     // read the last pixel to determine number of triangles generated!
     let copy_back_buff =  new ArrayBuffer(4 * 4)
     let copy_back = new Uint32Array(copy_back_buff);
-    this.gl.readPixels(
-        this.caseids_dim_x() - 1, 
-        this.caseids_dim_y() - 1, 
-        1,
-        1,
-        this.gl.RGBA_INTEGER, 
-        this.gl.UNSIGNED_INT, 
-        copy_back)
+    this.gl.readPixels(this.caseids_dim_x() - 1,  this.caseids_dim_y() - 1, 1, 1, this.gl.RGBA_INTEGER, this.gl.UNSIGNED_INT, copy_back)
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -388,7 +384,7 @@ export class GeometryGenerator {
     return num_tris_out;
   }
 
-  private run_gen_geometry(obj: PhongObj) {
+  private run_gen_geometry(obj: PhongObj, num_tris_out: number) {
     const gl = this.gl;
 
     gl.useProgram(this.gen_geometry_program.program);
@@ -408,25 +404,100 @@ export class GeometryGenerator {
     gl.bindVertexArray(null);
     gl.useProgram(null)
 
-    // Read buffer back to CPU
-    let copy_back_buff =
-        new ArrayBuffer(
-            this.gen_geom_vtxes_dim_x() * this.gen_geom_vtxes_dim_y() * 4 * 4)
+    // num_tris_out
+    const out_dim_y = Math.ceil(num_tris_out * 3 / this.gen_geom_vtxes_dim_x());
+
+    // in bytes, rounded up to nearest full row on texture. // 4 bytes per float, 4 floats per vtx
+    const gen_vtxes_size = this.gen_geom_vtxes_dim_x() * out_dim_y * 4 * 4;
+
+    // Read buffer back to CPU, for the few remaining CPU-side tasks to be done
+    let copy_back_buff = new ArrayBuffer(gen_vtxes_size)
     this.gen_geom_ints = new Uint32Array(copy_back_buff)
     this.gl.readPixels(
       0, 0, 
       this.gen_geom_vtxes_dim_x(),
-      this.gen_geom_vtxes_dim_y(),
+      out_dim_y,
       this.gl.RGBA_INTEGER, 
       this.gl.UNSIGNED_INT, 
       this.gen_geom_ints)
+    this.gen_geom_floats = new Float32Array(copy_back_buff);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-    this.gen_geom_floats = new Float32Array(copy_back_buff);
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.pts);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.gen_geom_floats), gl.STATIC_DRAW)
+    gl.bufferData(gl.ARRAY_BUFFER, gen_vtxes_size, gl.DYNAMIC_DRAW)
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, obj.pts);
 
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.gen_geometry_fbo)
+    gl.readBuffer(gl.COLOR_ATTACHMENT0)
+    gl.readPixels(0, 0,
+      this.gen_geom_vtxes_dim_x(), out_dim_y, this.gl.RGBA_INTEGER, this.gl.UNSIGNED_INT, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  }
+
+  private run_gen_normals(obj: PhongObj, num_tris: number) {
+    const gl = this.gl;
+    gl.useProgram(this.gen_normals_program.program);
+    twgl.setUniforms(this.gen_normals_program, {
+      'vtxes': this.gen_geometry_vtxes,
+      'dim': [this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y()],
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_normals_fbo)
+
+
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1])
+    gl.viewport(0, 0, this.gen_geom_vtxes_dim_x(), this.gen_geom_vtxes_dim_y())
+    gl.drawArrays(gl.POINTS, 0, num_tris * 3);
+
+    const out_dim_y = Math.ceil(num_tris * 3 / this.gen_geom_vtxes_dim_x());
+    const gen_normals_size = this.gen_geom_vtxes_dim_x() * out_dim_y * 4 * 4;
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj.normals);
+    gl.bufferData(gl.ARRAY_BUFFER, gen_normals_size, gl.DYNAMIC_DRAW)
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, obj.normals);
+
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.gen_normals_fbo)
+    gl.readBuffer(gl.COLOR_ATTACHMENT0)
+    gl.readPixels(0, 0, this.gen_geom_vtxes_dim_x(), out_dim_y, this.gl.RGBA_INTEGER, this.gl.UNSIGNED_INT, 0);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_normals_fbo);
+    // flip framebuffer attachments to read colors from 0 
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.gen_normals_tex, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.gen_colors_tex, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj.colors);
+    gl.bufferData(gl.ARRAY_BUFFER, gen_normals_size, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, obj.colors);
+
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.readPixels(0, 0, this.gen_geom_vtxes_dim_x(), out_dim_y, this.gl.RGBA_INTEGER, this.gl.UNSIGNED_INT, 0);
+
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+
+
+
+    // Read buffer back to CPU, for the few remaining CPU-side tasks to be done
+    // const gen_vtxes_size = this.gen_geom_vtxes_dim_x() * out_dim_y * 4 * 4;
+    // let copy_back_buff = new ArrayBuffer(gen_vtxes_size)
+    // let copy_back = new Uint32Array(copy_back_buff)
+    // this.gl.readPixels(
+      // 0, 0, 
+      // this.gen_geom_vtxes_dim_x(),
+      // out_dim_y,
+      // this.gl.RGBA_INTEGER, 
+      // this.gl.UNSIGNED_INT, 
+      // copy_back)
+    // let copy_back_floats = new Float32Array(copy_back_buff);
+
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.gen_normals_fbo);
+    // flip framebuffer attachments back to normal
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.gen_normals_tex, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.gen_colors_tex, 0);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   private densities_dim_x() : number {

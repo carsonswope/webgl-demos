@@ -17,7 +17,7 @@ export class PhongObj {
 
 	public constructor(
 		gl: WebGL2RenderingContext,
-		program: WebGLProgram,
+		public program: WebGLProgram,
 		data: PhongObjInfo) {
 
 	  // configure vertex array!

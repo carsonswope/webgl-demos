@@ -29,6 +29,8 @@ const run_fn = () => {
 
   let gen_obj = new PhongObj(gl, programInfo.program, null);
 
+  geometry_generator.init_idxes(gen_obj);
+
   geometry_generator.run(gen_obj,
       [-2., -2., -2., 1],
       [0.25, 0.25, 0.25, 0])
@@ -53,9 +55,16 @@ const run_fn = () => {
         (document.getElementById('val3') as HTMLInputElement).value;
     const v2 = +_v2;
 
-    const plane_rotate_x = v * Math.PI / 100;
+    geometry_generator.z_density_mult = (v2 * 0.02);
+
+    const plane_rotate_y = v * Math.PI / 100;
     const plane_tform_x = v1 / 10.
-    const plane_tform_y = v2 / 10.
+    const plane_tform_y = 0
+    // const plane_tform_y = v2 / 10.
+
+    geometry_generator.run(gen_obj,
+      [-2., -2., -2., 1],
+      [0.25, 0.25, 0.25, 0])
 
     // console.log(v);
 
@@ -126,7 +135,7 @@ const run_fn = () => {
       'cam_pos_inv': cam_pos_inv,
       'obj_pos': 
           twgl.m4.multiply(
-              twgl.m4.rotationX(plane_rotate_x),
+              twgl.m4.rotationY(plane_rotate_y),
               twgl.m4.translation(twgl.v3.create(plane_tform_x,0,plane_tform_y))),
       'obj_pos_inv_tpose': twgl.m4.identity(),
       'light_pos': light_pos,

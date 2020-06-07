@@ -7,6 +7,9 @@ uniform uint density_grid_dim;
 uniform vec4 sample_origin;
 uniform vec4 sample_scale;
 
+// dummy uniform to test realtime!
+uniform float z_density_mult;
+
 out uint out_density;
 
 void main() {
@@ -24,7 +27,7 @@ void main() {
 	
 	float density = 
 		// eventually byo density function!
-		0.2 + c.y + (0.5 * cos(c.x * 1.5)) + (0.02 * c.z * c.z);
+		0.2 + c.y + (0.5 * cos(c.x * 1.5)) + (0.02 * c.z * c.z * z_density_mult);
 
 	// write bits as uint..
 	out_density = floatBitsToUint(density);
