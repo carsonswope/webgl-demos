@@ -38,6 +38,10 @@ const ivec3 grid_offsets[8] = ivec3[8](
 
 void main() {
 
+	// gl_FragCoord = vec4(10.5, 15.5, gl_FragCoord.zw);
+
+	/*
+
 	const int voxel_grid_dim = 32;
 	const int max_vtxes_per_voxel = 3 * 5;
 	ivec2 out_id = ivec2(gl_FragCoord.xy - vec2(0.5, 0.5));
@@ -116,6 +120,7 @@ void main() {
 		out_vtx = uvec4(0, 0, 0, 0);
 	}
 
+	*/
 
 
 
