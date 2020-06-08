@@ -10,27 +10,28 @@
     {{ SHADERS }}
     <script src="bundle.js"></script>
     <div class="main">
+      <div id="loading">Loading: <span></span>%</div>
       <div>
         <input type="range" 
-             min="1"
+             min="0"
              max="100"
-             value="1"
+             value="16"
              class="slider"
-             id="val1"/>
-        PlaneRotateX
+             id="v0"/>
+        cam dist
+        <input type="range" 
+             min="0"
+             max="100"
+             value="20"
+             class="slider"
+             id="v1"/>
+        cam poop
         <input type="range" 
              min="-100"
              max="100"
-             value="0"
+             value="60"
              class="slider"
-             id="val2"/>
-        PlaneMoveX
-        <input type="range" 
-             min="-500"
-             max="500"
-             value="0"
-             class="slider"
-             id="val3"/>
+             id="v2"/>
         PlaneMoveY
       </div>
       <div>

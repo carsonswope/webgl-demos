@@ -98,6 +98,8 @@ export class GeometryGenerator {
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32F, d, d, d, 0, gl.RED, gl.FLOAT, new Float32Array(noise), 0);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        // gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    // gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
@@ -105,18 +107,11 @@ export class GeometryGenerator {
     gl.bindTexture(gl.TEXTURE_3D, null);
   }
 
-  public init_idxes(obj: PhongObj) {
+  public init_buffers(obj: PhongObj) {
     const d = this.voxel_grid_dim;
     const d3 = d * d * d;
 
-    let idxs = []
-    for (let i =0; i < d3; i++) { idxs.push(i) }
-
     const gl = this.gl;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj.idxes);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idxs), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
     const max_vtxes_size = d3 * 5 * 3 * 4 * 4;
 
     // assume max of 5% filled at any point

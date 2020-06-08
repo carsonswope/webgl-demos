@@ -13,9 +13,9 @@ out vec4 outColor;
 
 void main() {
 
-  const vec3 light_color = vec3(1., 1., 1.);
+  const vec3 light_color = vec3(1., 0.7, 1.);
   const float ambient_strength = .2;
-  const float specular_strength = 0.5;
+  const float specular_strength = 0.8;
 
   vec3 ambient = ambient_strength * light_color;
 

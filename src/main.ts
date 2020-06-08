@@ -31,32 +31,54 @@ const run_fn = () => {
   const terrain_info = Terrain1.make();
   let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
 
-  let geometry_generator = new GeometryGenerator(
-      gl,
-      32);
+  const voxel_grid_dim = 32;
+  let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
+  const grid_dim = [16, 4, 16]
+  const grid_scale = 0.00025;
+  const voxel_grid_world_dim = grid_scale * voxel_grid_dim;
+
+  const num_objs = grid_dim[0] * grid_dim[1] * grid_dim[2];
+
+  const full_size = [
+    grid_dim[0] * voxel_grid_world_dim,
+    grid_dim[1] * voxel_grid_world_dim,
+    grid_dim[2] * voxel_grid_world_dim]
+
+  const start_origin = [-full_size[0] / 2, -full_size[1] / 2, -full_size[2] / 2]
+  
   let gen_objs = [];
-  for (let i = 0; i < 16; i++) {
-    let o = new PhongObj(gl, programInfo.program, null);
-    geometry_generator.init_idxes(o);
-    gen_objs.push(o);
+  let i = 0;
+
+  // const init = 
+
+  for (let x =0; x < grid_dim[0]; x++) {
+    for (let y =0; y < grid_dim[1]; y++) {
+      for (let z =0; z < grid_dim[2]; z++) {
+
+        let o = new PhongObj(gl, programInfo.program, null);
+        geometry_generator.init_buffers(o);
+        gen_objs.push(o);
+
+        // low-left 
+        const origin = [
+          start_origin[0] + x * voxel_grid_world_dim,
+          start_origin[1] + y * voxel_grid_world_dim,
+          start_origin[2] + z * voxel_grid_world_dim,
+          1
+        ]
+        const scale = [grid_scale, grid_scale, grid_scale, 0]
+
+        geometry_generator.run(o, origin, scale)
+
+        // keeps blocking the thread!
+        document.getElementById('loading').getElementsByTagName('span')[0].innerText = '' + i;
+        // can't be bothered to iterate like that..
+        i++;
+      }
+    }
   }
 
-  for (let i =0; i <16; i++) {
-        const u = i / 4;
-        const v = i % 4;
-
-        const pos = [(u * 0.5) - .5, -.25, (v * 0.5) - .5, 1]
-        const scale = [0.02, 0.02, 0.02, 0];
-
-        geometry_generator.run(gen_objs[i], pos, scale)
-  }
-
-  // let gen_obj = new PhongObj(gl, programInfo.program, null);
-  // let gen_obj2 = new PhongObj(gl, programInfo.program ,null);
-
-  // geometry_generator.init_idxes(gen_obj);
-  // geometry_generator.init_idxes(gen_obj2);
 
   gl.enable(gl.DEPTH_TEST)
 
@@ -69,114 +91,53 @@ const run_fn = () => {
     }
     last_time = time;
 
+    const get_val = (v: string) => +(document.getElementById(v) as HTMLInputElement).value;
 
-    const _v: string =
-        (document.getElementById('val1') as HTMLInputElement).value;
-    const v = +_v;
+    const v0 = get_val('v0');
+    const v1 = get_val('v1');
+    const v2 = get_val('v2');
 
-    const _v1: string =
-        (document.getElementById('val2') as HTMLInputElement).value;
-    const v1 = +_v1;
-
-    const _v2: string =
-        (document.getElementById('val3') as HTMLInputElement).value;
-    const v2 = +_v2;
-
-    geometry_generator.z_density_mult = (v2 * 0.02);
-
-    const plane_rotate_y = v * Math.PI / 100;
-    const plane_tform_x = v1 / 10.
-    const plane_tform_y = 0
-
-    // geometry_generator.run(gen_obj,
-        // [-1., -1., -1., 1],
-        // [0.05, 0.05, 0.05, 0])
-
-    // geometry_generator.run(gen_obj2,
-        // [2., -1., -3., 1],
-        // [0.35, 0.35, 0.35, 0])
+    const cam_dist = v0 * 0.01;
+    const cam_tX = -v1 * (Math.PI / 2.) / 100;
+    const cam_tY = v2 * (Math.PI) / 100;
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
     twgl.resizeCanvasToDisplaySize(canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
     const aspect = canvas.clientWidth / canvas.clientHeight;
-    const cam_proj = twgl.m4.perspective(60 * Math.PI / 180, aspect, 1, 2000)
-
+    const cam_proj = twgl.m4.perspective(60 * Math.PI / 180, aspect, 0.01, 20)
+    const cam_translate = twgl.m4.translation(twgl.v3.create(0., 0, cam_dist))
+    const cam_rX = twgl.m4.rotationX(cam_tX);
+    const cam_rY = twgl.m4.rotationY(cam_tY);
     const cam_pos = 
-      twgl.m4.translate(twgl.m4.identity(), twgl.v3.create(0., 0, 2))
+      twgl.m4.multiply(cam_rY, twgl.m4.multiply(cam_rX, cam_translate));
+
     const cam_coords = 
       twgl.m4.transformPoint(cam_pos, twgl.v3.create(0, 0, 0));
     const cam_pos_inv = twgl.m4.inverse(cam_pos)
 
-    const obj_scale = twgl.m4.scaling(twgl.v3.create(1, 1, 1));
-
-    const obj_pos = 
-      twgl.m4.axisRotate(
-        obj_scale,
-          twgl.v3.create(.8, 0.2, 0),
-          time * 0.001)
-    const obj_pos_inv_tpose =
-        twgl.m4.transpose(twgl.m4.inverse(obj_pos));
+    const op = twgl.m4.identity();
+    const op_inv_tp = twgl.m4.identity();
 
     const light_pos = [0, 10, 0, 1]
 
   	gl.useProgram(programInfo.program)
-
-    /*
-  	twgl.setUniforms(programInfo, {
-      'cam_proj': cam_proj,
-      'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
-      'cam_pos_inv': cam_pos_inv,
-      'obj_pos': obj_pos,
-      'obj_pos_inv_tpose': obj_pos_inv_tpose,
-      'light_pos': light_pos,
-    })
-    gl.bindVertexArray(cube_obj.vao)
-    gl.drawElements(gl.TRIANGLES, cube_info.num_idxes, gl.UNSIGNED_SHORT, 0)
-    */
-
-    /*
-
-    twgl.setUniforms(programInfo, {
-      'cam_proj': cam_proj,
-      'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
-      'cam_pos_inv': cam_pos_inv,
-      'obj_pos': 
-          twgl.m4.multiply(
-              twgl.m4.rotationX(plane_rotate_x),
-              twgl.m4.translation(twgl.v3.create(plane_tform_x,0,plane_tform_y))),
-      'obj_pos_inv_tpose': twgl.m4.identity(),
-      'light_pos': light_pos,
-    })
-    gl.bindVertexArray(terr_obj.vao)
-    gl.drawElements(gl.TRIANGLES, terr_obj.num_idxes, gl.UNSIGNED_SHORT, 0)
-
-    */
-
-    // const obj_os
-    const op =
-        twgl.m4.multiply(
-              twgl.m4.rotationX(plane_rotate_y),
-              twgl.m4.rotationY(plane_tform_x));
-    const op_inv_tp = twgl.m4.transpose(twgl.m4.inverse(op));
-
     twgl.setUniforms(programInfo, {
       'cam_proj': cam_proj,
       'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
       'cam_pos_inv': cam_pos_inv,
       'obj_pos': op,
       'obj_pos_inv_tpose': op_inv_tp,
-      // 'obj_pos_inv_tpose': twgl.m4.identity(),
       'light_pos': light_pos,
     })
 
-    for (let i =0; i < 16; i++) {
-      gl.bindVertexArray(gen_objs[i].vao)
-      gl.drawElements(gl.TRIANGLES, gen_objs[i].num_idxes, gl.UNSIGNED_SHORT, 0);
-    }
-
+    gen_objs.forEach(o => {
+      if (o.num_idxes) {
+        gl.bindVertexArray(o.vao)
+        gl.drawArrays(gl.TRIANGLES, 0, o.num_idxes);
+      }
+    });
   	requestAnimationFrame(render)
   }
   requestAnimationFrame(render)

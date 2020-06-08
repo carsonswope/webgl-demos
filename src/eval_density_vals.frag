@@ -28,7 +28,7 @@ void main() {
 	// get world coord from invocation coord
 	vec3 c = sample_origin.xyz + (id * sample_scale.xyz);
 	
-	float n = texture(noise_tex, (c)).x  * 0.1;
+	float n = texture(noise_tex, (c * 3.)).x  * 0.02;
 
 	float density = c.y;
 

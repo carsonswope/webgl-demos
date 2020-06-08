@@ -48,5 +48,5 @@ void main() {
 	vec3 v = (vtx2 - vtx0).xyz;
 
 	v_normal = vec4(normalize(cross(u, v)), 0);
-	v_color = vec4(0., 0.7, 0.3, 1.);
+	v_color = vec4(0.2, 0.7, 0.4, 1.);
 }
