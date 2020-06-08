@@ -34,8 +34,8 @@ const run_fn = () => {
   const voxel_grid_dim = 32;
   let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
-  const grid_dim = [16, 4, 16]
-  const grid_scale = 0.00025;
+  const grid_dim = [20, 12, 20]
+  const grid_scale = 0.000125;
   const voxel_grid_world_dim = grid_scale * voxel_grid_dim;
 
   const num_objs = grid_dim[0] * grid_dim[1] * grid_dim[2];
@@ -48,17 +48,22 @@ const run_fn = () => {
   const start_origin = [-full_size[0] / 2, -full_size[1] / 2, -full_size[2] / 2]
   
   let gen_objs = [];
-  let i = 0;
 
   // const init = 
+
+  let o;
 
   for (let x =0; x < grid_dim[0]; x++) {
     for (let y =0; y < grid_dim[1]; y++) {
       for (let z =0; z < grid_dim[2]; z++) {
 
-        let o = new PhongObj(gl, programInfo.program, null);
-        geometry_generator.init_buffers(o);
-        gen_objs.push(o);
+        if (o == null) {
+          o = new PhongObj(gl, programInfo.program, null);
+          geometry_generator.init_buffers(o);
+        }
+
+        // let 
+        // gen_objs.push(o);
 
         // low-left 
         const origin = [
@@ -72,12 +77,19 @@ const run_fn = () => {
         geometry_generator.run(o, origin, scale)
 
         // keeps blocking the thread!
-        document.getElementById('loading').getElementsByTagName('span')[0].innerText = '' + i;
+        // document.getElementById('loading').getElementsByTagName('span')[0].innerText = '' + i++;
         // can't be bothered to iterate like that..
-        i++;
+
+        if (o.num_idxes > 0) {
+          gen_objs.push(o);
+          o = undefined;
+        }
       }
     }
   }
+
+  console.log('max num sections', grid_dim[0] * grid_dim[1] * grid_dim[2])
+  console.log('num sections', gen_objs.length)
 
 
   gl.enable(gl.DEPTH_TEST)
@@ -97,7 +109,7 @@ const run_fn = () => {
     const v1 = get_val('v1');
     const v2 = get_val('v2');
 
-    const cam_dist = v0 * 0.01;
+    const cam_dist = v0 * 0.002;
     const cam_tX = -v1 * (Math.PI / 2.) / 100;
     const cam_tY = v2 * (Math.PI) / 100;
 

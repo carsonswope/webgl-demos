@@ -114,8 +114,8 @@ export class GeometryGenerator {
     const gl = this.gl;
     const max_vtxes_size = d3 * 5 * 3 * 4 * 4;
 
-    // assume max of 5% filled at any point
-    const max_vtx_fill = 0.05;
+    // assume max of 10% filled at any point
+    const max_vtx_fill = 0.10;
     const vtxes_size = Math.ceil(max_vtxes_size * max_vtx_fill);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.pts);
