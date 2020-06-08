@@ -28,6 +28,9 @@ export class GeometryGenerator {
 
   lookup_tables: LookupTables;
 
+  random_noise_dim: number = 16;
+  random_noise: WebGLTexture; // cube!
+
   compute_vao: WebGLVertexArrayObject;
   compute_idxes: WebGLBuffer;
   compute_uvs: WebGLBuffer;
@@ -78,6 +81,28 @@ export class GeometryGenerator {
       type: gl.UNSIGNED_INT,
     };
 
+    this.make_random_grid();
+
+  }
+
+  public make_random_grid() {
+    const gl = this.gl;
+    let noise = []
+    const d = this.random_noise_dim;
+    const d3 = Math.pow(d, 3);
+    for (let i =0; i < d3; i++) { noise.push(Math.random() * 2 - 1) }
+
+    this.random_noise = gl.createTexture();
+
+    gl.bindTexture(gl.TEXTURE_3D, this.random_noise);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32F, d, d, d, 0, gl.RED, gl.FLOAT, new Float32Array(noise), 0);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
+
+    gl.bindTexture(gl.TEXTURE_3D, null);
   }
 
   public init_idxes(obj: PhongObj) {
@@ -264,6 +289,7 @@ export class GeometryGenerator {
           'sample_scale':  this.sample_scale,
           'density_grid_dim': this.voxel_grid_dim + 1,
           'z_density_mult': this.z_density_mult,
+          'noise_tex': this.random_noise,
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.densities_fbo);
     gl.viewport(0, 0, this.densities_dim_x(), this.densities_dim_y())
