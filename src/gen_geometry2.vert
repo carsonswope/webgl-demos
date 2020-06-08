@@ -3,16 +3,11 @@
 precision mediump usampler2D;
 precision mediump isampler2D;
 
-flat out uint v_voxel_idx;
 flat out uvec3 voxel_id;
 flat out uint tri_idx;
 flat out uint vtx_idx;
 flat out uint case_id;
 flat out uint v_voxel_grid_dim; 
-
-// every possible voxel / triangle / vtx given unique input
-// { voxel_id (0-(dim^3)), triangle_id (0-4), vtx_id (0-2), 0 }
-in uvec4 a_id;
 
 // dimensions of output image of RGBA32F values (1 vtx per!)
 uniform vec2 out_dim;
@@ -48,11 +43,12 @@ void main() {
 	// just a little bigger than a pixel so rasterizer always picks it up!
 	gl_PointSize = 1.2;
 
-	uint voxel_idx = a_id.x;
-	v_voxel_idx = voxel_idx;
+	uint v = uint(gl_VertexID);
+	uint voxel_idx = v / 15u;
 	voxel_id = get_voxel_id(voxel_idx);
-	tri_idx = a_id.y;
-	vtx_idx = a_id.z;
+	uint tri_vtx = v % 15u;
+	tri_idx = tri_vtx / 3u;
+	vtx_idx = tri_vtx % 3u;
 
 	uvec4 voxel_case_info = get_voxel_case_info(voxel_id);
 	case_id = voxel_case_info.x;

@@ -30,6 +30,7 @@ export class PhongObj {
 	  	const attr = gl.getAttribLocation(program, name)
 	    gl.enableVertexAttribArray(attr)
 	    gl.vertexAttribPointer(attr, size, type, false, 0, 0)
+	    gl.bindBuffer(gl.ARRAY_BUFFER, null);
 	    return b;
 	  }
 

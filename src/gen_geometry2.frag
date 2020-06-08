@@ -4,17 +4,14 @@ precision mediump isampler2D;
 precision mediump usampler2D;
 precision mediump float;
 
-flat in uint v_voxel_idx;
 flat in uvec3 voxel_id;
-
 flat in uint tri_idx;
 flat in uint vtx_idx;
-
 flat in uint case_id;
+flat in uint v_voxel_grid_dim;
 
 out uvec4 out_vtx;
 
-flat in uint v_voxel_grid_dim;
 
 uniform isampler2D tris_out; // 5 * 256!
 uniform usampler2D densities;

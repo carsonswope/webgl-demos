@@ -51,11 +51,6 @@ void main() {
 	uvec4 info_out = t_left ? info0 : info1;
 
 	info_out.z = t_left ? info1.z : info0.z + info1.z;
-	// if (t_left) {
-		// info_out.z = info1.z;
-	// } else {
-		// info_out.z = info0.z + info1.z;
-	// }
 
 	v_data = info_out;
 }

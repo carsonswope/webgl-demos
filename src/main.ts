@@ -23,25 +23,24 @@ const run_fn = () => {
   let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
 
   let geometry_generator = new GeometryGenerator(
-      gl, 
-      // 4);
+      gl,
       32);
 
   let gen_obj = new PhongObj(gl, programInfo.program, null);
 
   geometry_generator.init_idxes(gen_obj);
 
-  geometry_generator.run(gen_obj,
-      [-2., -2., -2., 1],
-      [0.25, 0.25, 0.25, 0])
-
-  // geometry_generator.run(gen_obj,
-      // [-1., -1., -1., 1],
-      // [0.5, 0.5, 0.5, 0])
-
   gl.enable(gl.DEPTH_TEST)
 
+  let last_time = null;
+
   const render = (time) => {
+
+    if (last_time != null) {
+      document.getElementById('fps').innerText = (1000 / (time - last_time)).toFixed(1);
+    }
+    last_time = time;
+
 
     const _v: string =
         (document.getElementById('val1') as HTMLInputElement).value;
@@ -60,13 +59,10 @@ const run_fn = () => {
     const plane_rotate_y = v * Math.PI / 100;
     const plane_tform_x = v1 / 10.
     const plane_tform_y = 0
-    // const plane_tform_y = v2 / 10.
 
     geometry_generator.run(gen_obj,
-      [-2., -2., -2., 1],
-      [0.25, 0.25, 0.25, 0])
-
-    // console.log(v);
+        [-3., -3., -3., 1],
+        [0.35, 0.35, 0.35, 0])
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
