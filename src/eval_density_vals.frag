@@ -28,15 +28,17 @@ void main() {
 	// get world coord from invocation coord
 	vec3 c = sample_origin.xyz + (id * sample_scale.xyz);
 	
-	float n0 = texture(noise_tex, (c * 3.)).x  * 0.02;
-	float n1 = texture(noise_tex, (c * 7.1)).x * 0.012;
-	float n2 = texture(noise_tex, (c * 156.3)).x * 0.0003;
+	float n0 = texture(noise_tex, (c * 0.5)).x  * 0.02;
+	float n1 = texture(noise_tex, (c * 3.)).x  * 0.02;
+	float n2 = texture(noise_tex, (c * 7.1)).x * 0.012;
+	float n3 = texture(noise_tex, (c * 156.3)).x * 0.0003;
 
 	float density = c.y;
 
 	density -= n0;
 	density -= n1;
 	density -= n2;
+	density -= n3;
 
 	// write bits as uint..
 	out_density = floatBitsToUint(density);

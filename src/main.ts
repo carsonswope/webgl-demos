@@ -22,6 +22,16 @@ const run_fn = () => {
     if (ext == null) { alert(`Required WebGL2 extension ${e} not available`) }
   });
 
+  // const debug_ext_name = ['WEBGL_debug_renderer_info'];
+  const debug_info = gl.getExtension('WEBGL_debug_renderer_info');
+  let renderer_info = 'Unknown';
+  if (debug_info != null) {
+    renderer_info = gl.getParameter(debug_info.UNMASKED_RENDERER_WEBGL);
+  }
+
+  document.getElementById('gpu').getElementsByTagName('span')[0].innerText =
+      renderer_info;
+
   const programInfo = 
       twgl.createProgramInfo(gl, ["phong_vert", "phong_frag"])
   
@@ -34,8 +44,8 @@ const run_fn = () => {
   const voxel_grid_dim = 32;
   let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
-  const grid_dim = [20, 12, 20]
-  const grid_scale = 0.000125;
+  const grid_dim = [16, 6, 16]
+  const grid_scale = 0.001;
   const voxel_grid_world_dim = grid_scale * voxel_grid_dim;
 
   const num_objs = grid_dim[0] * grid_dim[1] * grid_dim[2];
@@ -88,30 +98,84 @@ const run_fn = () => {
     }
   }
 
-  console.log('max num sections', grid_dim[0] * grid_dim[1] * grid_dim[2])
-  console.log('num sections', gen_objs.length)
-
+  // console.log('max num sections', grid_dim[0] * grid_dim[1] * grid_dim[2])
+  // console.log('num sections', gen_objs.length)
 
   gl.enable(gl.DEPTH_TEST)
 
   let last_time = null;
 
+  let s_forward = false;
+  let s_backward = false;
+  let s_left = false;
+  let s_right =false;
+
+  document.addEventListener('keydown', (ev) => {
+    switch (ev.key) {
+    case 'ArrowUp': s_forward = true; s_backward = false; break;
+    case 'ArrowDown': s_backward = true; s_forward = false; break;
+    case 'ArrowLeft': s_left = true; s_right = false; break;
+    case 'ArrowRight': s_right = true; s_left = false; break;
+    }
+
+  });
+
+  document.addEventListener('keyup', (ev) => {
+    switch (ev.key) {
+    case 'ArrowUp': s_forward = false; break;
+    case 'ArrowDown': s_backward = false; break;
+    case 'ArrowLeft': s_left = false; break;
+    case 'ArrowRight': s_right = false; break;
+    }
+  });
+
+  document.getElementById('lock-mouse').addEventListener('click', (ev) => {
+    let c = (gl.canvas as HTMLCanvasElement);
+    c.requestPointerLock = c.requestPointerLock || (c as any).mozRequestPointerLock;
+    c.requestPointerLock()
+  })
+
+  let cam_xyz_pos = [0, 0.03, 0];
+  let cam_y_rot = 0.;
+  let cam_x_rot = -0.1;
+
+  const cam_x_rot_min = -0.7;
+  const cam_x_rot_max = -0.0;
+
+  document.addEventListener('mousemove', (ev) => {
+    if (document.pointerLockElement === gl.canvas || (document as any).mozPointerLockElement === gl.canvas) {
+      let m = [ev.movementX, ev.movementY]
+      cam_y_rot -= m[0] * 0.005;
+      cam_x_rot -= m[1] * 0.005;
+
+      cam_x_rot = Math.max(cam_x_rot, cam_x_rot_min);
+      cam_x_rot = Math.min(cam_x_rot, cam_x_rot_max);
+
+
+    }
+  });
+
+
   const render = (time) => {
 
+    let diff = 0;
     if (last_time != null) {
-      document.getElementById('fps').innerText = (1000 / (time - last_time)).toFixed(1);
+      diff = (1000 / (time - last_time));
+      document.getElementById('fps').innerText = diff.toFixed(1);
     }
     last_time = time;
 
-    const get_val = (v: string) => +(document.getElementById(v) as HTMLInputElement).value;
+    const move_rate = 0.000011; // change per ms..
+    const update_cam_xz = (dir: number) => {
+      const theta = (dir * Math.PI / 2) - cam_y_rot
+      cam_xyz_pos[0] += Math.cos(theta) * diff * move_rate
+      cam_xyz_pos[2] += Math.sin(theta) * diff * move_rate
+    }
 
-    const v0 = get_val('v0');
-    const v1 = get_val('v1');
-    const v2 = get_val('v2');
-
-    const cam_dist = v0 * 0.002;
-    const cam_tX = -v1 * (Math.PI / 2.) / 100;
-    const cam_tY = v2 * (Math.PI) / 100;
+    if (s_forward) { update_cam_xz(3) }
+    if (s_backward) { update_cam_xz(1) }
+    if (s_left) { update_cam_xz(2) }
+    if (s_right) { update_cam_xz(0) }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     twgl.resizeCanvasToDisplaySize(canvas)
@@ -119,11 +183,10 @@ const run_fn = () => {
 
     const aspect = canvas.clientWidth / canvas.clientHeight;
     const cam_proj = twgl.m4.perspective(60 * Math.PI / 180, aspect, 0.01, 20)
-    const cam_translate = twgl.m4.translation(twgl.v3.create(0., 0, cam_dist))
-    const cam_rX = twgl.m4.rotationX(cam_tX);
-    const cam_rY = twgl.m4.rotationY(cam_tY);
-    const cam_pos = 
-      twgl.m4.multiply(cam_rY, twgl.m4.multiply(cam_rX, cam_translate));
+    const cam_translate = twgl.m4.translation(cam_xyz_pos)
+    const cam_rX = twgl.m4.rotationX(cam_x_rot);
+    const cam_rY = twgl.m4.rotationY(cam_y_rot);
+    const cam_pos = twgl.m4.multiply(twgl.m4.multiply(cam_translate, cam_rY), cam_rX);
 
     const cam_coords = 
       twgl.m4.transformPoint(cam_pos, twgl.v3.create(0, 0, 0));
