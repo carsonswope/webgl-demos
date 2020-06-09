@@ -4,6 +4,51 @@ import { PhongObjInfo } from './phongshader'
 
 export class Cube {
 
+	static wireframe(): PhongObjInfo {
+		const out_points = [
+			-1, -1, -1, 1,
+			 1, -1, -1, 1,
+			 1,  1, -1, 1,
+			-1,  1, -1, 1,
+			-1, -1,  1, 1,
+			 1, -1,  1, 1,
+			 1,  1,  1, 1,
+			-1,  1,  1, 1,
+		]
+
+		const out_colors = []
+		for (let i =0; i < 8; i++) {
+			// gray..
+			out_colors.push(0.4);
+			out_colors.push(0.4);
+			out_colors.push(0.4);
+			out_colors.push(1);
+		}
+
+		const out_idxes = [
+			0, 1,
+			1, 2,
+			2, 3,
+			3, 0,
+			4, 5,
+			5, 6,
+			6, 7,
+			7, 4,
+			0, 4,
+			1, 5,
+			2, 6,
+			3, 7
+		]
+
+		let info: PhongObjInfo = new PhongObjInfo();
+		info.pts = new Float32Array(out_points);
+		info.idxes = new Uint16Array(out_idxes);
+		info.colors = new Float32Array(out_colors);
+		info.normals = new Float32Array([]);
+		info.num_idxes = out_idxes.length;
+		return info;
+	}
+
 	static vtxes(): PhongObjInfo {
 		const base_points = [[-1, -1], [-1,  1], [1,  -1], [1, 1]];
 		const start_normal = twgl.v3.create(0, 0, -1)

@@ -4,6 +4,7 @@ precision mediump float;
 
 uniform vec4 cam_pos;
 uniform vec4 light_pos;
+uniform bool flat_color;
 
 in vec4 v_color;
 in vec4 v_normal;
@@ -13,7 +14,12 @@ out vec4 outColor;
 
 void main() {
 
-  const vec3 light_color = vec3(1., 0.7, 1.);
+  if (flat_color) {
+  	outColor = v_color;
+  	return;
+  }
+
+  const vec3 light_color = vec3(1., 1., 1.);
   const float ambient_strength = .2;
   const float specular_strength = 0.8;
 
