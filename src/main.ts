@@ -8,7 +8,16 @@ import {Terrain1} from './terrain1'
 import {GeometryGenerator} from './lookuptables'
 import {FovChecker} from './fov_checker'
 
-const run_fn = () => {
+
+const get_voxel_block_id = (coords: number[]) => {
+  return `${coords[0]}c${coords[1]}c${coords[2]}`
+}
+
+const get_voxel_block_coords = (id: string) => {
+  return id.split('c').map(a => +a);
+}
+
+const init_webgl = (): WebGL2RenderingContext => {
 
   const canvas = document.querySelector('canvas') as HTMLCanvasElement;
   const gl = canvas.getContext('webgl2' /*, { antialias: false } */)
@@ -33,35 +42,44 @@ const run_fn = () => {
   document.getElementById('gpu').getElementsByTagName('span')[0].innerText =
       renderer_info;
 
+  gl.enable(gl.DEPTH_TEST)
+
+  return gl;
+}
+
+const run_fn = () => {
+
+  const gl = init_webgl();
+  const canvas = gl.canvas as HTMLCanvasElement;
+
   const programInfo = 
       twgl.createProgramInfo(gl, ["phong_vert", "phong_frag"])
   
-  const cube_info = Cube.vtxes();
-  let cube_obj = new PhongObj(gl, programInfo.program, cube_info);
+  let cube_obj = new PhongObj(gl, programInfo.program, Cube.vtxes());
+  let terr_obj = new PhongObj(gl, programInfo.program, Terrain1.make());
+  let cube_wireframe = new PhongObj(gl, programInfo.program, Cube.wireframe());
 
-  const terrain_info = Terrain1.make();
-  let terr_obj = new PhongObj(gl, programInfo.program, terrain_info);
-
-  const cube_wireframe_info = Cube.wireframe();
-  let cube_wireframe = new PhongObj(gl, programInfo.program, cube_wireframe_info);
-
-  const voxel_grid_dim = 32;
+  const voxel_grid_dim = 32; // a voxel block consists of cube of voxels with this side length
+  const voxel_grid_world_dim = 0.03; // every voxel block is this big in world space
+  const grid_scale = voxel_grid_world_dim / voxel_grid_dim;
+  
   let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
-  const grid_dim = [8, 6, 8]
-  const grid_scale = 0.0012;
-  const voxel_grid_world_dim = grid_scale * voxel_grid_dim;
+  const vp_length = 1.;
+  const fov_checker = new FovChecker(gl, vp_length, voxel_grid_world_dim);
 
-  const num_objs = grid_dim[0] * grid_dim[1] * grid_dim[2];
+  const max_blocks = 300;
+  const max_blocks_eval_per_frame = 3;
 
-  const full_size = [
-    grid_dim[0] * voxel_grid_world_dim,
-    grid_dim[1] * voxel_grid_world_dim,
-    grid_dim[2] * voxel_grid_world_dim]
+  // objects don't start off as initialized
+  let blocks_geometry: PhongObj[] = [];
+  // all blocks that are known to be empty
+  let known_empty_blocks: { [key: string]: boolean } = {};
+  // map of block ids to where block lives in blocks_geometry
+  let current_evaluated_blocks: { [key: string]: number } = {};
+  // idxes of empty geometry blocks
+  let empty_geometry_block_idxs: number[] = []
 
-  const start_origin = [-full_size[0] / 2, -full_size[1] / 2, -full_size[2] / 2]
-
-  gl.enable(gl.DEPTH_TEST)
 
   let last_time = null;
 
@@ -113,46 +131,14 @@ const run_fn = () => {
     }
   });
 
-  const cam_fov = 50 * Math.PI / 180;
-  const cam_aspect = canvas.clientWidth / canvas.clientHeight;
 
-  const fov_checker = new FovChecker(gl, 0.5, voxel_grid_world_dim);
-
-  const voxel_xz_hits = fov_checker.run(cam_xyz_pos, cam_fov, cam_aspect, cam_y_rot, cam_x_rot)
-
-  let gen_objs = [];
-
-  let o;
-
-  let active_objs = [];
-
-  voxel_xz_hits.forEach(v => {
-
-    for (let i = -3; i < 3; i++) {
-      if (o == null) {
-        o = new PhongObj(gl, programInfo.program, null);
-        geometry_generator.init_buffers(o);
-      }
-
-      const scale = [grid_scale, grid_scale, grid_scale, 0]
-      const origin = [
-        v.coord[0] * voxel_grid_world_dim,
-        i * voxel_grid_world_dim,
-        v.coord[1] * voxel_grid_world_dim,
-        1]
-
-      geometry_generator.run(o, origin, scale);
-
-      if (o.num_idxes > 0) {
-        gen_objs.push(o);
-        active_objs.push([v.coord[0], i, v.coord[1]]);
-        o = undefined;
-      }
-
-
-    }
-
-  })
+  const get_block_origin = (coords: number[]): number[] => {
+    const s = voxel_grid_world_dim * 0.5;
+    return [
+        s + (coords[0] * voxel_grid_world_dim),
+        s + (coords[1] * voxel_grid_world_dim),
+        s + (coords[2] * voxel_grid_world_dim)];
+  }
 
   const render = (time) => {
 
@@ -193,104 +179,122 @@ const run_fn = () => {
 
     const light_pos = [0, 10, 0, 1]
 
+
     // returns xz coordinates of voxels in current viewport..
     const voxel_xz_hits = fov_checker.run(cam_xyz_pos, cam_fov, cam_aspect, cam_y_rot, cam_x_rot)
 
-    // debugger;
-    // console.log()
+    // let looping_voxels = true;
+    // while (looping_voxels) {
+    let current_hit_idx = 0;
+    let i =0;
+
+    // make list of current blocks that are eligible to be replaced, sorted by distance to camera
+    const current_blocks_by_dist = Object.keys(current_evaluated_blocks).map(b_id => {
+      const world_coords = get_block_origin(get_voxel_block_coords(b_id));
+      let diff = twgl.v3.subtract(world_coords, cam_xyz_pos);
+      diff[1] = 0; // clear y position
+      const dist = twgl.v3.length(diff);
+      const idx = current_evaluated_blocks[b_id];
+      return { b_id, diff, idx, dist };
+    }).filter(info => {
+      // any very-far-out block is eligible
+      if (info.dist > vp_length) return true;
+      const t = cam_y_rot;
+      const z = (info.diff[0] * Math.sin(t)) + (info.diff[2] * Math.cos(t));
+      // positive z == behind camera
+      return z > 0
+    }).sort((a, b) => a.dist - b.dist); // end of array: furthest distance!
+
+    // current_evaluated_blocks.
+    const s = voxel_grid_world_dim * 0.5;
+
+    while (i < max_blocks_eval_per_frame && current_hit_idx < voxel_xz_hits.length) {
+
+      const hit = voxel_xz_hits[current_hit_idx++];
+      for (let j = -1; j < 2 && i < max_blocks_eval_per_frame; j++) {
+
+        const c = [hit.coord[0], j, hit.coord[1]];
+        const c_id = get_voxel_block_id(c);
+        // if block is already evaluated or known to be empty, continue
+        if (current_evaluated_blocks[c_id] != null) continue;
+        if (known_empty_blocks[c_id]) continue;
+
+        let o;
+        let idx;
+
+        // need to fetch a new o to operate on!
+        // first try: if there are any known empty evaluated blocks..
+        if (empty_geometry_block_idxs.length) {
+          idx = empty_geometry_block_idxs.pop();
+          o = blocks_geometry[idx];
+
+        // second try: just make a new object because not at max yet
+        } else if (blocks_geometry.length < max_blocks) {
+          o = new PhongObj(gl, programInfo.program, null);
+          geometry_generator.init_buffers(o);
+          idx = blocks_geometry.length;
+          blocks_geometry.push(o);
+
+        // third try: find furthest currently evaluated block that is behind the camera
+        } else if (current_blocks_by_dist.length) {
+          const info = current_blocks_by_dist.pop();
+          delete current_evaluated_blocks[info.b_id];
+          idx = info.idx;
+          o = blocks_geometry[idx];
+        } else {
+
+          // can't find block to replace. just stop the process then
+          i = max_blocks_eval_per_frame;
+          break;
+        }     
+
+        const scale = [grid_scale, grid_scale, grid_scale, 0]
+        const origin = [c[0] * voxel_grid_world_dim, c[1] * voxel_grid_world_dim, c[2] * voxel_grid_world_dim, 1]
+
+        geometry_generator.run(o, origin, scale);
+
+        if (o.num_idxes > 0) {
+          current_evaluated_blocks[c_id] = idx;
+        } else {
+          known_empty_blocks[c_id] = true;
+          empty_geometry_block_idxs.push(idx);
+        }
+
+        i++;
+      }
+
+    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    twgl.resizeCanvasToDisplaySize(canvas)
+    twgl.resizeCanvasToDisplaySize(gl.canvas as HTMLCanvasElement)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
   	gl.useProgram(programInfo.program)
     twgl.setUniforms(programInfo, {
       'cam_proj': cam_proj,
       'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
+      'v_cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
       'cam_pos_inv': cam_pos_inv,
       'obj_pos': op,
       'obj_pos_inv_tpose': op_inv_tp,
       'light_pos': light_pos,
       'flat_color': false,
-    })
-
-    gen_objs.forEach(o => {
-      if (o.num_idxes) {
-        gl.bindVertexArray(o.vao)
-        gl.drawArrays(gl.TRIANGLES, 0, o.num_idxes);
-      }
+      'fog_level': 16.,
     });
 
+    (Object as any).keys(current_evaluated_blocks).forEach(id => {
+      const i = current_evaluated_blocks[id]
+      let o = blocks_geometry[i];
 
-    
+      const block_origin = get_block_origin(get_voxel_block_coords(id));
+      const diff = [block_origin[0] - cam_xyz_pos[0], block_origin[2] - cam_xyz_pos[2]]
+      const t = cam_y_rot;
+      const z_r = (diff[0] * Math.sin(t)) + (diff[1] * Math.cos(t));
+      if (z_r > (voxel_grid_world_dim * 2)) return; // skip drawing commands that would have no effect (behind camera)
 
-    // gl.useProgram(programInfo.program);
-
-    gl.bindVertexArray(cube_wireframe.vao)
-
-    voxel_xz_hits.forEach(v => {
-
-      const s = voxel_grid_world_dim * 0.5;
-      const scale = twgl.m4.scaling([s, s, s])
-      const t = twgl.m4.translation([
-        s + (v.coord[0] * voxel_grid_world_dim),
-        s + (0 * voxel_grid_world_dim),
-        s + (v.coord[1] * voxel_grid_world_dim)
-        // start_origin[0] + s + (a[0] * s * 2),
-        // start_origin[1] + s + (a[1] * s * 2),
-        // start_origin[2] + s + (a[2] * s * 2),
-        ])
-
-      const block_tform = twgl.m4.multiply(t, scale);
-      const block_tform_inverse = twgl.m4.transpose(twgl.m4.inverse(block_tform));
-
-      twgl.setUniforms(programInfo, {
-        'obj_pos': block_tform,
-        'obj_pos_inv_tpose': block_tform_inverse,
-        'flat_color': true,
-      });
-      gl.drawElements(gl.LINES, cube_wireframe.num_idxes, gl.UNSIGNED_SHORT, 0);
-    })
-
-    
-
-    active_objs.forEach(a => {
-      const s = voxel_grid_world_dim * 0.5;
-      const scale = twgl.m4.scaling([s, s, s])
-      const t = twgl.m4.translation([
-        s + (a[0] * voxel_grid_world_dim),
-        s + (a[1] * voxel_grid_world_dim),
-        s + (a[2] * voxel_grid_world_dim)
-        // start_origin[0] + s + (a[0] * s * 2),
-        // start_origin[1] + s + (a[1] * s * 2),
-        // start_origin[2] + s + (a[2] * s * 2),
-        ])
-
-      const block_tform = twgl.m4.multiply(t, scale);
-      const block_tform_inverse = twgl.m4.transpose(twgl.m4.inverse(block_tform));
-
-      twgl.setUniforms(programInfo, {
-        'obj_pos': block_tform,
-        'obj_pos_inv_tpose': block_tform_inverse,
-        'flat_color': true,
-      });
-      gl.drawElements(gl.LINES, cube_wireframe.num_idxes, gl.UNSIGNED_SHORT, 0);
+      gl.bindVertexArray(o.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, o.num_idxes);
     });
-
-    
-
-    /*
-
-    // debuggin...
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fov_checker.fov_image_fbo);
-    gl.blitFramebuffer(
-      0, 0, fov_checker.img_dim, fov_checker.img_dim,
-      0, 0, fov_checker.img_dim, fov_checker.img_dim,
-      gl.COLOR_BUFFER_BIT,
-      gl.NEAREST);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-
-    */
 
   	requestAnimationFrame(render)
   }

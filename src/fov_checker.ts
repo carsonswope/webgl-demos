@@ -49,11 +49,11 @@ export class FovChecker {
 
     let vtxes = [
        // put simulated camera origin slightly behind actual origin
-       0,-.03,  0, 1,
-       1,   1,  1, 1,
-      -1,   1,  1, 1,
-      -1,   1, -1, 1,
-       1,   1, -1, 1,
+       0, -.1,  0, 1,
+       1.1,   1.1,  1.1, 1,
+      -1.1,   1.1,  1.1, 1,
+      -1.1,   1.1, -1.1, 1,
+       1.1,   1.1, -1.1, 1,
     ]
 
     let idxes = [

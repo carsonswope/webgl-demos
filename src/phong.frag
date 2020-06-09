@@ -6,9 +6,12 @@ uniform vec4 cam_pos;
 uniform vec4 light_pos;
 uniform bool flat_color;
 
+uniform float fog_level;
+
 in vec4 v_color;
 in vec4 v_normal;
 in vec4 v_frag_pos;
+in float dist_to_cam;
 
 out vec4 outColor;
 
@@ -37,6 +40,15 @@ void main() {
   float spec = pow(max(dot(view_dir, reflect_dir), 0.), 64.);
   vec3 specular = specular_strength * spec * light_color;
 
-  outColor = vec4((ambient + diffuse + specular) * v_color.xyz, 1);
+  vec4 c = vec4((ambient + diffuse + specular) * v_color.xyz, 1);
+
+  if (fog_level > 0.) {
+  float d2 = dist_to_cam * dist_to_cam;
+    c.x += d2 * fog_level;
+    c.y += d2 * fog_level;
+    c.z += d2 * fog_level;
+  }
+
+  outColor = c;
 
 }
