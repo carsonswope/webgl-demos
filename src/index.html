@@ -2,20 +2,22 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>Procedural terrain generation</title>
+    <title>WebGL2 terrain generator</title>
     <link rel="stylesheet" href="style.css" type="text/css" />
   </head>
   <body>
     <canvas id="c"></canvas>
     {{ SHADERS }}
     <script src="bundle.js"></script>
-    <div class="title"><span>Random terrain generation with WebGL</span></div>
+    <div class="title"><span>WebGL2 terrain generator</span></div>
     <div class="main">
 
       <div class="left">
-        <div><span id="fps"></span> fps</div>
         <div id="gpu">Engine: <span></span></div>
-        <div><button id="lock-mouse">Mouse to control view</button></div>
+        <div><span id="fps"></span> fps</div>
+        <br>
+        <div>Move: arrow keys/wasd</div>
+        <div>Look: <button id="lock-mouse">Click here to use mouse</button></div>
       </div>
 
       <div class="right">

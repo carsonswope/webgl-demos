@@ -68,7 +68,7 @@ const run_fn = () => {
   const vp_length = 1.;
   const fov_checker = new FovChecker(gl, vp_length, voxel_grid_world_dim);
 
-  const max_blocks = 300;
+  const max_blocks = 350;
   const max_blocks_eval_per_frame = 3;
 
   // objects don't start off as initialized
@@ -113,12 +113,12 @@ const run_fn = () => {
     c.requestPointerLock()
   })
 
-  let cam_xyz_pos = [0, 0.03, 0];
+  let cam_xyz_pos = [0, 0.04, 0];
   let cam_y_rot = 0.;
-  let cam_x_rot = -0.1;
+  let cam_x_rot = -0.35;
 
-  const cam_x_rot_min = -0.7;
-  const cam_x_rot_max = -0.0;
+  const cam_x_rot_min = -0.75;
+  const cam_x_rot_max = -0.35;
 
   document.addEventListener('mousemove', (ev) => {
     if (document.pointerLockElement === gl.canvas || (document as any).mozPointerLockElement === gl.canvas) {
@@ -255,6 +255,7 @@ const run_fn = () => {
 
         if (o.num_idxes > 0) {
           current_evaluated_blocks[c_id] = idx;
+          o.created_timestamp = time;
         } else {
           known_empty_blocks[c_id] = true;
           empty_geometry_block_idxs.push(idx);
@@ -291,6 +292,11 @@ const run_fn = () => {
       const t = cam_y_rot;
       const z_r = (diff[0] * Math.sin(t)) + (diff[1] * Math.cos(t));
       if (z_r > (voxel_grid_world_dim * 2)) return; // skip drawing commands that would have no effect (behind camera)
+
+      // slowly blend in new objects, so it's less jarring when they show up
+      const age = time - o.created_timestamp;
+      const fog = age > 2000 ? 16. : 16 + ((2000 - age) / 100)
+      twgl.setUniforms(programInfo, {'fog_level': fog});
 
       gl.bindVertexArray(o.vao);
       gl.drawArrays(gl.TRIANGLES, 0, o.num_idxes);

@@ -14,6 +14,7 @@ export class PhongObj {
 	colors: WebGLBuffer;
 	idxes: WebGLBuffer;
 	num_idxes: number;
+	created_timestamp: number = 0;
 
 	public constructor(
 		gl: WebGL2RenderingContext,
