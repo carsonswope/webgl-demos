@@ -149,7 +149,7 @@ const run_fn = () => {
     }
     last_time = time;
 
-    const move_rate = 0.000015; // change per ms..
+    const move_rate = 0.000011; // change per ms..
     const update_cam_xz = (dir: number) => {
       const theta = (dir * Math.PI / 2) - cam_y_rot
       cam_xyz_pos[0] += Math.cos(theta) * diff * move_rate

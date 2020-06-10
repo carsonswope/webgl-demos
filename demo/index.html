@@ -1,0 +1,616 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Procedural terrain generation</title>
+    <link rel="stylesheet" href="style.css" type="text/css" />
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    
+
+<script id="caseids_prefix_scan_combine_vert" type="notjs">
+#version 300 es
+
+precision mediump usampler2D;
+
+flat out uvec4 v_data;
+
+uniform vec2 dim;
+uniform uint stage;
+uniform uint num_stages;
+
+// parallel image to the output image.
+uniform usampler2D img_in;
+
+// given a coord position on output image, put vtx at proper NDC
+// so the (single point) fragment it generates is at the coord.
+void set_coord_out(uvec2 c) {
+	vec2 coord = (2. * (vec2(c) + vec2(0.5, 0.5)) / (dim)) - 1.;
+	gl_Position = vec4(coord, 0, 1);
+}
+
+uvec2 get_img_coord(uint idx) {
+	return uvec2(idx % uint(dim.x), idx / uint(dim.x));
+}
+
+void set_idx_out(uint idx) {
+	set_coord_out(get_img_coord(idx));
+}
+
+// nice diagram here:
+// https://www.cs.cmu.edu/~guyb/papers/Ble93.pdf
+void main() {
+	gl_PointSize = 1.2;
+	// threadID
+	uint _t = uint(gl_VertexID);
+	uint t = _t / 2u;
+	bool t_left = _t % 2u == 0u;
+
+	uint step = 1u << stage;
+	uint i0 = (step - 1u) + (t * step * 2u);
+	uint i1 = i0 + step;
+	set_idx_out(t_left ? i0 : i1);
+
+	bool first_stage = stage == num_stages - 1u;
+
+	uvec4 info0 = texelFetch(img_in, ivec2(get_img_coord(i0)), 0);
+	uvec4 info1 = texelFetch(img_in, ivec2(get_img_coord(i1)), 0);
+
+	// reset root
+	if (first_stage) { info1.z = 0u; }
+
+	uvec4 info_out = t_left ? info0 : info1;
+
+	info_out.z = t_left ? info1.z : info0.z + info1.z;
+
+	v_data = info_out;
+}
+
+</script>
+<script id="caseids_prefix_scan_reduce_vert" type="notjs">
+#version 300 es
+
+precision mediump usampler2D;
+
+flat out uvec4 v_data;
+
+uniform vec2 dim;
+uniform uint stage;
+
+// parallel image to the output image.
+uniform usampler2D img_in;
+
+// given a coord position on output image, put vtx at proper NDC
+// so the (single point) fragment it generates is at the coord.
+void set_coord_out(uvec2 c) {
+	vec2 coord = (2. * (vec2(c) + vec2(0.5, 0.5)) / (dim)) - 1.;
+	gl_Position = vec4(coord, 0, 1);
+}
+
+uvec2 get_img_coord(uint idx) {
+	return uvec2(idx % uint(dim.x), idx / uint(dim.x));
+}
+
+void set_idx_out(uint idx) {
+	set_coord_out(get_img_coord(idx));
+}
+
+
+void main() {
+	gl_PointSize = 1.2;
+	// threadID
+	uint _t = uint(gl_VertexID);
+
+	uint t = _t / 2u;
+	bool t_reduce = _t % 2u == 0u;
+
+	uint step = 1u << stage;
+	uint i0 = (step - 1u) + (t * step * 2u);
+	uint i1 = i0 + step;
+
+	uvec4 info0 = texelFetch(img_in, ivec2(get_img_coord(i0)), 0);
+	uvec4 info1 = texelFetch(img_in, ivec2(get_img_coord(i1)), 0);
+
+	set_idx_out(t_reduce ? i1 : i0);
+
+	uvec4 info_out = t_reduce ? info1 : info0;
+
+	if (t_reduce) { info_out.z = info0.z + info1.z; }
+
+	v_data = info_out;
+}
+
+</script>
+<script id="fov_checker_vert" type="notjs">
+#version 300 es
+
+uniform mat4 cam;
+uniform mat4 vp;
+
+in vec4 pos;
+
+out float voxel_dist;
+
+void main() { 
+	vec4 p = vp * pos;
+	voxel_dist = length(p.xy); // length from 0 voxel
+	gl_Position = cam * p;
+ }
+</script>
+<script id="gen_geometry2_vert" type="notjs">
+#version 300 es
+
+precision mediump usampler2D;
+precision mediump isampler2D;
+
+flat out uvec3 voxel_id;
+flat out uint tri_idx;
+flat out uint vtx_idx;
+flat out uint case_id;
+flat out uint v_voxel_grid_dim; 
+
+// dimensions of output image of RGBA32F values (1 vtx per!)
+uniform vec2 out_dim;
+uniform uint voxel_grid_dim;
+
+uniform usampler2D case_ids;
+
+// given a coord position on output image, put vtx at proper NDC
+// so the (single point) fragment it generates is at the coord.
+void set_coord_out(uvec2 c) {
+	vec2 coord = (2. * (vec2(c) + vec2(0.5, 0.5)) / (out_dim)) - 1.;
+	gl_Position = vec4(coord, 0, 1);
+}
+
+// convert raw vtx idx to coord, then write out
+void set_idx_out(uint i) {
+	set_coord_out(uvec2(i % uint(out_dim.x), i / uint(out_dim.x)));
+}
+
+uvec4 get_voxel_case_info(uvec3 v_id) {
+	uint d = voxel_grid_dim;
+	uvec2 voxel_lookup_coord = uvec2((v_id.z * d) + v_id.x, v_id.y);
+	return texelFetch(case_ids, ivec2(voxel_lookup_coord), 0);
+}
+
+uvec3 get_voxel_id(uint v) {
+	uint d = voxel_grid_dim;
+	return uvec3(v % d, v / (d * d), (v / d) % d);
+}
+
+void main() { 
+
+	// just a little bigger than a pixel so rasterizer always picks it up!
+	gl_PointSize = 1.2;
+
+	uint v = uint(gl_VertexID);
+	uint voxel_idx = v / 15u;
+	voxel_id = get_voxel_id(voxel_idx);
+	uint tri_vtx = v % 15u;
+	tri_idx = tri_vtx / 3u;
+	vtx_idx = tri_vtx % 3u;
+
+	uvec4 voxel_case_info = get_voxel_case_info(voxel_id);
+	case_id = voxel_case_info.x;
+
+	uint num_tris = voxel_case_info.y;
+	uint start_tri_idx = voxel_case_info.z;
+
+	v_voxel_grid_dim = voxel_grid_dim;
+	
+	if (tri_idx < num_tris) {
+		set_idx_out((start_tri_idx * 3u) + (tri_idx * 3u) + vtx_idx);
+	}
+}
+
+</script>
+<script id="gen_normals_vert" type="notjs">
+#version 300 es
+
+precision mediump usampler2D;
+
+flat out vec4 v_normal;
+flat out vec4 v_color;
+
+uniform vec2 dim;
+
+// img containing vtxes
+uniform usampler2D vtxes;
+
+// given a coord position on output image, put vtx at proper NDC
+// so the (single point) fragment it generates is at the coord.
+void set_coord_out(uvec2 c) {
+	vec2 coord = (2. * (vec2(c) + vec2(0.5, 0.5)) / (dim)) - 1.;
+	gl_Position = vec4(coord, 0, 1);
+}
+
+uvec2 get_img_coord(uint idx) {
+	return uvec2(idx % uint(dim.x), idx / uint(dim.x));
+}
+
+void set_idx_out(uint idx) {
+	set_coord_out(get_img_coord(idx));
+}
+
+vec4 fetch_vtx(uint triangle_id, uint vtx_id) {
+	uint idx = (triangle_id * 3u) + vtx_id;
+	uint d = uint(dim.x);
+	return uintBitsToFloat(texelFetch(vtxes, ivec2(idx % d, idx / d), 0));
+}
+
+// nice diagram here:
+void main() {
+	gl_PointSize = 1.2;
+
+	uint idx = uint(gl_VertexID);
+	set_idx_out(idx);
+	uint triangle_id = idx / 3u;
+	uint vtx_id = idx % 3u;
+
+	vec4 vtx0 = fetch_vtx(triangle_id, 0u);
+	vec4 vtx1 = fetch_vtx(triangle_id, 1u);
+	vec4 vtx2 = fetch_vtx(triangle_id, 2u);
+
+	vec3 u = (vtx1 - vtx0).xyz;
+	vec3 v = (vtx2 - vtx0).xyz;
+
+	v_normal = vec4(normalize(cross(u, v)), 0);
+	v_color = vec4(0.2, 0.7, 0.4, 1.);
+}
+
+</script>
+<script id="phong_vert" type="notjs">
+#version 300 es
+
+in vec4 position;
+in vec4 normal;
+in vec4 color;
+
+uniform vec4 v_cam_pos;
+uniform mat4 cam_proj;
+uniform mat4 cam_pos_inv;
+uniform mat4 obj_pos;
+uniform mat4 obj_pos_inv_tpose;
+
+out vec4 v_color;
+out vec4 v_normal;
+out vec4 v_frag_pos;
+out float dist_to_cam;
+
+void main() {
+
+  v_frag_pos = obj_pos * position;
+
+  dist_to_cam = length(v_frag_pos.xyz - v_cam_pos.xyz);
+
+  gl_Position = cam_proj * cam_pos_inv * v_frag_pos;
+
+  v_normal = vec4(mat3(obj_pos_inv_tpose) * normal.xyz, 0);
+  v_color = color;
+}
+
+</script>
+<script id="pixel_compute_vert" type="notjs">
+#version 300 es
+
+// simplest pass-through 
+in vec4 uv;
+void main() { gl_Position = vec4(uv.xy, 0, 1); }
+</script>
+<script id="caseids_prefix_scan_combine_frag" type="notjs">
+#version 300 es
+
+flat in uvec4 v_data;
+out uvec4 out_vtx;
+void main() { out_vtx = v_data; }
+
+</script>
+<script id="caseids_prefix_scan_reduce_frag" type="notjs">
+#version 300 es
+
+flat in uvec4 v_data;
+out uvec4 out_vtx;
+void main() { out_vtx = v_data; }
+
+</script>
+<script id="eval_caseids_frag" type="notjs">
+#version 300 es
+
+precision mediump float;
+precision mediump usampler2D;
+
+out uvec4 out_caseids;
+
+uniform usampler2D densities_texture;
+uniform usampler2D num_tris_texture;
+
+uniform uint voxel_grid_dim;
+
+const uvec3 grid_offsets[8] = uvec3[8](
+	uvec3(0, 0, 0),
+	uvec3(0, 0, 1),
+	uvec3(1, 0, 1),
+	uvec3(1, 0, 0),
+	uvec3(0, 1, 0),
+	uvec3(0, 1, 1),
+	uvec3(1, 1, 1),
+	uvec3(1, 1, 0));
+
+void main() {
+
+	const uint num_tris_grid_dim = 16u;
+
+	uint d = voxel_grid_dim;
+	ivec2 out_coord = ivec2(gl_FragCoord.xy - vec2(0.5, 0.5));
+
+	// xyz invocation coord
+	uvec3 in_coord = uvec3(
+		uint(out_coord.x) % d,
+		uint(out_coord.y),
+		uint(out_coord.x) / d);
+
+	uint case_id =uint(0);
+	uint count = 0u;
+	for (uint i = 0u; i < uint(8); i++) {
+		uvec3 to_sample = in_coord + grid_offsets[i];
+		uvec2 lookup_coord = uvec2((to_sample.z * (d + 1u)) + to_sample.x, to_sample.y);
+		uint density_int = texelFetch(densities_texture, ivec2(lookup_coord), 0).x;
+		float density_float = uintBitsToFloat(density_int);
+		if (density_float > 0.) { case_id |= (uint(1) << i); }
+	}
+
+	uint num_tris_out = (case_id == 0u || case_id == 255u) 
+		? 0u 
+		: texelFetch(
+			num_tris_texture, 
+			ivec2(
+				case_id % num_tris_grid_dim, 
+				case_id / num_tris_grid_dim),
+			0).x;
+
+	out_caseids = uvec4(
+		case_id, 
+		num_tris_out, 
+		num_tris_out, // 2nd entry as seeds for prefix scan
+		0);
+}
+</script>
+<script id="eval_density_vals_frag" type="notjs">
+#version 300 es
+
+precision mediump float;
+precision mediump sampler3D;
+
+uniform uint density_grid_dim;
+
+uniform vec4 sample_origin;
+uniform vec4 sample_scale;
+
+// dummy uniform to test realtime!
+uniform float z_density_mult;
+
+uniform sampler3D noise_tex;
+
+out uint out_density;
+
+void main() {
+	uint d = density_grid_dim;
+	ivec2 out_coord = ivec2(gl_FragCoord.xy - vec2(0.5, 0.5));
+
+	// xyz invocation index on voxel grid
+	vec3 id = vec3(
+		uint(out_coord.x) % d,
+		uint(out_coord.y),
+		uint(out_coord.x) / d);
+
+	// get world coord from invocation coord
+	vec3 c = sample_origin.xyz + (id * sample_scale.xyz);
+	
+	float n0 = texture(noise_tex, (c * 0.5)).x  * 0.02;
+	float n1 = texture(noise_tex, (c * 3.)).x  * 0.02;
+	float n2 = texture(noise_tex, (c * 7.1)).x * 0.012;
+	float n3 = texture(noise_tex, (c * 156.3)).x * 0.0003;
+
+	float density = c.y;
+
+	density -= n0;
+	density -= n1;
+	density -= n2;
+	density -= n3;
+
+	// write bits as uint..
+	out_density = floatBitsToUint(density);
+}
+
+</script>
+<script id="fov_checker_frag" type="notjs">
+#version 300 es
+precision mediump float;
+in float voxel_dist;
+out uvec2 val;
+void main() { 
+	val = uvec2(1, floatBitsToUint(voxel_dist));
+}
+
+</script>
+<script id="gen_geometry2_frag" type="notjs">
+#version 300 es
+
+precision mediump isampler2D;
+precision mediump usampler2D;
+precision mediump float;
+
+flat in uvec3 voxel_id;
+flat in uint tri_idx;
+flat in uint vtx_idx;
+flat in uint case_id;
+flat in uint v_voxel_grid_dim;
+
+out uvec4 out_vtx;
+
+
+uniform isampler2D tris_out; // 5 * 256!
+uniform usampler2D densities;
+
+uniform vec4 sample_origin;
+uniform vec4 sample_scale;
+
+const ivec2 edge_vtxes[12] = ivec2[12](
+	ivec2(0, 1),
+	ivec2(1, 2),
+	ivec2(2, 3),
+	ivec2(3, 0),
+	ivec2(4, 5),
+	ivec2(5, 6),
+	ivec2(6, 7),
+	ivec2(7, 4),
+	ivec2(0, 4),
+	ivec2(1, 5),
+	ivec2(2, 6),
+	ivec2(3, 7));
+
+const ivec3 grid_offsets[8] = ivec3[8](
+	ivec3(0, 0, 0),
+	ivec3(0, 0, 1),
+	ivec3(1, 0, 1),
+	ivec3(1, 0, 0),
+	ivec3(0, 1, 0),
+	ivec3(0, 1, 1),
+	ivec3(1, 1, 1),
+	ivec3(1, 1, 0));
+
+float get_density(uvec3 v_id) {
+	uint d = v_voxel_grid_dim;
+	ivec2 c = ivec2((v_id.z * (d + 1u)) + v_id.x, v_id.y);
+	uint d_uint = texelFetch(densities, c, 0).x;
+	return uintBitsToFloat(d_uint);
+}
+
+vec3 get_sample_position(uvec3 v_id) {
+	return sample_origin.xyz + (sample_scale.xyz * vec3(v_id));
+}
+
+void main() {
+
+ 	ivec4 edges_for_tri = texelFetch(tris_out, ivec2(tri_idx, case_id), 0);
+
+ 	int e;
+ 	switch (vtx_idx) {
+	case 0u: e = edges_for_tri.x; break;
+	case 1u: e = edges_for_tri.y; break;
+	case 2u: e = edges_for_tri.z; break;
+ 	}
+
+ 	ivec2 _v = edge_vtxes[e];
+ 	int v0 = _v.x;
+ 	int v1 = _v.y;
+
+ 	uvec3 v0_id = voxel_id + uvec3(grid_offsets[v0]);
+ 	uvec3 v1_id = voxel_id + uvec3(grid_offsets[v1]);
+
+ 	float d0 = get_density(v0_id);
+ 	float d1 = get_density(v1_id);
+
+ 	vec3 p0 = get_sample_position(v0_id);
+ 	vec3 p1 = get_sample_position(v1_id);
+
+ 	float interp = -(d0 / (d1 - d0));
+ 	vec4 p = vec4(p0 + (interp * (p1 - p0)), 1.);
+
+ 	out_vtx = floatBitsToUint(p);
+ }
+
+</script>
+<script id="gen_normals_frag" type="notjs">
+#version 300 es
+
+precision mediump float;
+
+flat in vec4 v_normal;
+flat in vec4 v_color;
+
+layout (location = 0) out uvec4 out_normal;
+layout (location = 1) out uvec4 out_color;
+
+void main() {
+	out_normal = floatBitsToUint(v_normal);
+	out_color = floatBitsToUint(v_color);
+}
+
+</script>
+<script id="phong_frag" type="notjs">
+#version 300 es
+
+precision mediump float;
+
+uniform vec4 cam_pos;
+uniform vec4 light_pos;
+uniform bool flat_color;
+
+uniform float fog_level;
+
+in vec4 v_color;
+in vec4 v_normal;
+in vec4 v_frag_pos;
+in float dist_to_cam;
+
+out vec4 outColor;
+
+void main() {
+
+  if (flat_color) {
+  	outColor = v_color;
+  	return;
+  }
+
+  const vec3 light_color = vec3(1., 1., 1.);
+  const float ambient_strength = .2;
+  const float specular_strength = 0.8;
+
+  vec3 ambient = ambient_strength * light_color;
+
+  vec3 light_dir = normalize((light_pos - v_frag_pos).xyz);
+  vec3 norm = normalize(v_normal.xyz);
+  float diff = max(dot(norm, light_dir), 0.0);
+  vec3 diffuse = diff * light_color;
+
+  vec3 view_dir = normalize(cam_pos.xyz - v_frag_pos.xyz);
+  vec3 reflect_dir = reflect(-light_dir, norm);
+
+  // float spec = 0.;
+  float spec = pow(max(dot(view_dir, reflect_dir), 0.), 64.);
+  vec3 specular = specular_strength * spec * light_color;
+
+  vec4 c = vec4((ambient + diffuse + specular) * v_color.xyz, 1);
+
+  if (fog_level > 0.) {
+  float d2 = dist_to_cam * dist_to_cam;
+    c.x += d2 * fog_level;
+    c.y += d2 * fog_level;
+    c.z += d2 * fog_level;
+  }
+
+  outColor = c;
+
+}
+
+</script>
+    <script src="bundle.js"></script>
+    <div class="title"><span>Random terrain generation with WebGL</span></div>
+    <div class="main">
+
+      <div class="left">
+        <div><span id="fps"></span> fps</div>
+        <div id="gpu">Engine: <span></span></div>
+        <div><button id="lock-mouse">Mouse to control view</button></div>
+      </div>
+
+      <div class="right">
+          <div><a href="https://github.com/carsonswope/webgl-demos" target="blank">Github &#8663;</a></div>  
+          <div><a href="https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-1-generating-complex-procedural-terrains-using-gpu" target="blank">Inspiration &#8663;</a></div>
+      </div>
+    
+    </div>
+  </body>
+</html>

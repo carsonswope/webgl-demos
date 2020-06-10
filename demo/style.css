@@ -1,0 +1,42 @@
+body {
+	margin: 0;
+	font-family: monospace;
+}
+
+canvas {
+	display: block;
+	width: 100vw;
+	height: 100vh;
+}
+
+.title {
+	position: absolute;
+	left: 40vw;
+	top: 0;
+	text-align: center;
+	z-index: 10;
+}
+
+.title span {
+	padding: 16px;
+	display: inline-block;
+}
+
+.main {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 100%;
+	display: flex;
+}
+
+.main .right {
+	flex-grow: 1;
+	padding: 16px;
+	text-align: right;
+}
+
+.main .left {
+	flex-grow: 1;
+	padding: 16px;
+}
