@@ -5,7 +5,8 @@
 	"scripts": {
 		"build": "gulp && tsc && webpack",
 		"watch-build": "npm-watch",
-		"build-prod": "gulp && tsc && webpack --env.production"
+		"build-prod": "gulp && tsc && webpack --env.production",
+		"publish": "npm run build-prod && cp-cli ./dist/index.html ./docs/index.html && cp-cli ./dist/bundle.js ./docs/bundle.js && cp-cli ./dist/style.css ./docs/style.css"
 	},
 	"watch": {
 		"build": "src/**.*"
@@ -20,6 +21,7 @@
 		"webpack": "4.43.0",
 		"webpack-cli": "3.3.11",
 		"npm-watch": "0.6.0",
-		"uglifyjs-webpack-plugin": "2.2.0"
+		"uglifyjs-webpack-plugin": "2.2.0",
+		"cp-cli": "2.0.0"
 	}
 }

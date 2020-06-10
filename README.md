@@ -2,7 +2,7 @@
 
 This is a WebGL2 implementation of a random terrain generation technique explained in [Nvidia GPU Gems](https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-1-generating-complex-procedural-terrains-using-gpu).
 
-Check it out [live](https://www.googe.com)
+Check it out [live](https://carsonswope.github.io/webgl-demos/docs/index.html)
 
 ## Local development
 
@@ -16,6 +16,10 @@ npm run watch-build
 And then open `./dist/index.html` in your web browser of choice.
 
 While the watch/build command is running, any time you change a file everything will be recompiled and you can see your changes by refreshing the page.
+
+To make a 'minified' build, run `npm run build-prod`. This runs the 'production' mode build, only once with no file watching.
+
+Finally, run `npm run publish` to run the production build and then copy the important files into ./docs, so that they can be served via github pages 
 
 ## WebGL2 challenges
 
