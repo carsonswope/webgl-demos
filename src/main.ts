@@ -90,20 +90,20 @@ const run_fn = () => {
 
   document.addEventListener('keydown', (ev) => {
     switch (ev.key) {
-    case 'ArrowUp': s_forward = true; s_backward = false; break;
-    case 'ArrowDown': s_backward = true; s_forward = false; break;
-    case 'ArrowLeft': s_left = true; s_right = false; break;
-    case 'ArrowRight': s_right = true; s_left = false; break;
+    case 'ArrowUp': case 'w': s_forward = true; s_backward = false; break;
+    case 'ArrowDown': case 's': s_backward = true; s_forward = false; break;
+    case 'ArrowLeft': case 'a': s_left = true; s_right = false; break;
+    case 'ArrowRight': case 'd': s_right = true; s_left = false; break;
     }
 
   });
 
   document.addEventListener('keyup', (ev) => {
     switch (ev.key) {
-    case 'ArrowUp': s_forward = false; break;
-    case 'ArrowDown': s_backward = false; break;
-    case 'ArrowLeft': s_left = false; break;
-    case 'ArrowRight': s_right = false; break;
+    case 'ArrowUp': case 'w': s_forward = false; break;
+    case 'ArrowDown': case 's':  s_backward = false; break;
+    case 'ArrowLeft':  case 'a': s_left = false; break;
+    case 'ArrowRight':  case 'd': s_right = false; break;
     }
   });
 
