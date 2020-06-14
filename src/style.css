@@ -9,19 +9,6 @@ canvas {
 	height: 100vh;
 }
 
-.title {
-	position: absolute;
-	left: 40vw;
-	top: 0;
-	text-align: center;
-	z-index: 10;
-}
-
-.title span {
-	padding: 16px;
-	display: inline-block;
-}
-
 .main {
 	position: absolute;
 	top: 0px;

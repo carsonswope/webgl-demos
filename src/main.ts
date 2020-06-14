@@ -211,7 +211,7 @@ const run_fn = () => {
     while (i < max_blocks_eval_per_frame && current_hit_idx < voxel_xz_hits.length) {
 
       const hit = voxel_xz_hits[current_hit_idx++];
-      for (let j = -1; j < 2 && i < max_blocks_eval_per_frame; j++) {
+      for (let j = -2; j < 2 && i < max_blocks_eval_per_frame; j++) {
 
         const c = [hit.coord[0], j, hit.coord[1]];
         const c_id = get_voxel_block_id(c);

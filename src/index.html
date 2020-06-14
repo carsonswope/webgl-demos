@@ -9,20 +9,21 @@
     <canvas id="c"></canvas>
     {{ SHADERS }}
     <script src="bundle.js"></script>
-    <div class="title"><span>WebGL2 terrain generator</span></div>
+
     <div class="main">
 
       <div class="left">
-        <div id="gpu">Engine: <span></span></div>
-        <div><span id="fps"></span> fps</div>
+        <div><span><b>WebGL2 terrain generator</b></span></div>
+        <div><a href="https://github.com/carsonswope/webgl-demos" target="blank">Github &#8663;</a></div>  
         <br>
         <div>Move: arrow keys/wasd</div>
-        <div>Look: <button id="lock-mouse">Click here to use mouse</button></div>
+        <div>Look: <button id="lock-mouse">Use mouse</button></div>
+
       </div>
 
       <div class="right">
-          <div><a href="https://github.com/carsonswope/webgl-demos" target="blank">Github &#8663;</a></div>  
-          <div><a href="https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-1-generating-complex-procedural-terrains-using-gpu" target="blank">Inspiration &#8663;</a></div>
+          <div id="gpu">Engine: <span></span></div>
+          <div><span id="fps"></span> fps</div>
       </div>
     
     </div>
