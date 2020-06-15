@@ -19,7 +19,8 @@ void main() {
 
   v_frag_pos = obj_pos * position;
 
-  dist_to_cam = length(v_frag_pos.xyz - v_cam_pos.xyz);
+  // ignore cam y for now!
+  dist_to_cam = length(v_frag_pos.xyz - vec3(v_cam_pos.x, 0, v_cam_pos.z));
 
   gl_Position = cam_proj * cam_pos_inv * v_frag_pos;
 

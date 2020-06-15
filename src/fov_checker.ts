@@ -3,7 +3,7 @@ import * as twgl from '../node_modules/twgl.js/dist/4.x/twgl-full'
 import {PhongObj} from './phongshader'
 import {GlUtil, TexFormat} from './glutil'
 
-class FovVoxelHit {
+export class FovVoxelHit {
   coord: number[];
   dist: number;
 }
