@@ -24,7 +24,7 @@ export class LookupTables {
 
 export class GeometryGenerator {
 
-  static voxels_dim: number = 32;
+  // static voxels_dim: number = 32;
 
   lookup_tables: LookupTables;
 
@@ -64,8 +64,8 @@ export class GeometryGenerator {
   TexFormat_RGBA32UI: TexFormat;
 
   public constructor(
-      private gl: WebGL2RenderingContext, 
-      private readonly voxel_grid_dim: number) {
+      public readonly gl: WebGL2RenderingContext, 
+      public readonly voxel_grid_dim: number) {
 
     this.lookup_tables = new LookupTables(gl);
 

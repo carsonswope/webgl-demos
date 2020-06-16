@@ -8,44 +8,7 @@ import {Terrain1} from './terrain1'
 import {GeometryGenerator} from './lookuptables'
 import {FovChecker, FovVoxelHit} from './fov_checker'
 import {GlCtx} from './glctx'
-
-const get_voxel_block_id = (coords: number[]) => {
-  return `${coords[0]}c${coords[1]}c${coords[2]}`
-}
-
-const get_voxel_block_coords = (id: string) => {
-  return id.split('c').map(a => +a);
-}
-
-export class ProfileTimestamp {
-  id: string;
-  t: number; // ms since epoch...
-}
-
-export class ProfileTimer {
-
-
-
-  private els: ProfileTimestamp[] = [];
-
-  public constructor() {}
-
-  public clear() { this.els.length = 0 }
-
-  public push(id: string) {
-    this.els.push({id, t: +new Date()})
-  }
-
-  public log(title: string) {
-    console.log(title)
-    this.els.forEach((ts0, i0) => {
-      const i1 = i0 + 1;
-      if (i1 == this.els.length) return;
-      const ts1 = this.els[i1];
-      console.log(ts0.id, ts1.t - ts0.t)
-    })
-  }
-}
+import {VoxelBlockGroup} from './voxelblockgroup'
 
 const run_fn = () => {
 
@@ -63,32 +26,16 @@ const run_fn = () => {
   const voxel_grid_dim = 32; // a voxel block consists of cube of voxels with this side length
   let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
-  const blocks_diameter = 5; // only items within a sphere of radius d/2 from camera/target pt. are rendered. must be odd!
-  const max_blocks_eval_per_frame = 1;
-  const voxel_grid_world_dim = 0.1; // every voxel block is this big in world space
+  // const blocks_diameter = 5; // only items within a sphere of radius d/2 from camera/target pt. are rendered. must be odd!
+  // const max_blocks_eval_per_frame = 1;
+  // const voxel_grid_world_dim = 0.1; // every voxel block is this big in world space
 
-
-  const grid_scale = voxel_grid_world_dim / voxel_grid_dim;
-  const max_blocks_length = blocks_diameter + 2;
-  const max_blocks = max_blocks_length * max_blocks_length;
-  let surrounding_coords = []
-  for (let i = 0; i < max_blocks_length; i++) {
-    for (let j = 0; j < max_blocks_length; j++) {
-      surrounding_coords.push([
-        i - (max_blocks_length - 1) / 2, 
-        j - (max_blocks_length - 1) / 2]);
-    }
-  }
-
-  // objects don't start off as initialized
-  let blocks_geometry: PhongObj[] = [];
-  // all blocks that are known to be empty
-  let known_empty_blocks: { [key: string]: boolean } = {};
-  // map of block ids to where block lives in blocks_geometry
-  let current_evaluated_blocks: { [key: string]: number } = {};
-  // idxes of empty geometry blocks
-  let empty_geometry_block_idxs: number[] = []
-
+  const voxel_block_group = new VoxelBlockGroup(
+      geometry_generator, 
+      5, 
+      1, 
+      0.1,
+      () => new PhongObj(gl, phongShader.program, null));
 
   let last_time = null;
 
@@ -142,23 +89,11 @@ const run_fn = () => {
     }
   });
 
-
-  const get_block_origin = (coords: number[]): number[] => {
-    const s = voxel_grid_world_dim * 0.5;
-    return [
-        s + (coords[0] * voxel_grid_world_dim),
-        s + (coords[1] * voxel_grid_world_dim),
-        s + (coords[2] * voxel_grid_world_dim)];
-  }
-
   const block_wireframes_checkbox = document.getElementById('block-wireframes') as HTMLInputElement;
   const fps_el = document.getElementById('fps');
 
-
   const render = (time) => {
 
-    // let t = new ProfileTimer()
-    // t.push('vars/matrices');
 
     let diff = 0;
     if (last_time != null) {
@@ -178,7 +113,6 @@ const run_fn = () => {
     if (s_backward) { update_cam_xz(1) }
     if (s_left) { update_cam_xz(2) }
     if (s_right) { update_cam_xz(0) }
-
 
     draw_block_wireframes = block_wireframes_checkbox.checked;
 
@@ -200,111 +134,7 @@ const run_fn = () => {
 
     const light_pos = [0, 10, 0, 1]
 
-    const current_cam_block = [
-      Math.round(cam_xyz_pos[0] / voxel_grid_world_dim),
-      Math.round(cam_xyz_pos[2] / voxel_grid_world_dim)
-    ];
-
-    // all xy coords 
-    const all_voxel_xz_hits = surrounding_coords
-        .map((c0): number[] => [c0[0] + current_cam_block[0], c0[1] + current_cam_block[1]]);
-
-    const missing_block_xz_hits = all_voxel_xz_hits
-        .filter(v => current_evaluated_blocks[get_voxel_block_id([v[0], 0, v[1]])] == null)
-        .map(c => {
-          const world_coords = get_block_origin([c[0], 0, c[1]])
-          let diff = twgl.v3.subtract(world_coords, cam_xyz_pos);
-          diff[1] = 0;
-          const dist = twgl.v3.length(diff);
-          return {
-            c,
-            dist
-          };
-        })
-        .sort((a, b) => a.dist - b.dist);
-
-    let all_voxel_xz_hit_ids = {};
-    all_voxel_xz_hits.forEach(h => { all_voxel_xz_hit_ids[get_voxel_block_id([h[0], 0, h[1]])] = true; });
-
-    let current_hit_idx = 0;
-    let i =0;
-
-    // make list of current blocks that are eligible to be replaced
-    const available_obj_blocks = Object.keys(current_evaluated_blocks)
-        .filter(b_id => { return !all_voxel_xz_hit_ids[b_id]; })
-        .map(b_id => {
-          const idx = current_evaluated_blocks[b_id];
-          return { b_id, idx};
-        });
-
-    // current_evaluated_blocks.
-    const s = voxel_grid_world_dim * 0.5;
-
-    while (i < max_blocks_eval_per_frame && current_hit_idx < missing_block_xz_hits.length) {
-
-      const hit = missing_block_xz_hits[current_hit_idx++];
-      for (let j = 0; j < 1 && i < max_blocks_eval_per_frame; j++) {
-
-        const c = [hit.c[0], j, hit.c[1]];
-        const c_id = get_voxel_block_id(c);
-        // if block is already evaluated or known to be empty, continue
-        if (current_evaluated_blocks[c_id] != null) continue;
-        if (known_empty_blocks[c_id]) continue;
-
-        let o;
-        let idx;
-
-        // need to fetch a new o to operate on!
-        // first try: if there are any known empty evaluated blocks..
-        if (empty_geometry_block_idxs.length) {
-          idx = empty_geometry_block_idxs.pop();
-          o = blocks_geometry[idx];
-
-        // second try: just make a new object because not at max yet
-        } else if (blocks_geometry.length < max_blocks) {
-          o = new PhongObj(gl, phongShader.program, null);
-          geometry_generator.init_buffers(o);
-          idx = blocks_geometry.length;
-          blocks_geometry.push(o);
-
-        // third try: find furthest currently evaluated block that is behind the camera
-        } else if (available_obj_blocks.length) {
-          const info = available_obj_blocks.pop();
-          delete current_evaluated_blocks[info.b_id];
-          idx = info.idx;
-          o = blocks_geometry[idx];
-        } else {
-
-          // can't find block to replace. just stop the process then
-          i = max_blocks_eval_per_frame;
-          break;
-        }     
-
-        const scale = [grid_scale, grid_scale, grid_scale, 0]
-        // const _s = voxel_grid_world_dim / 2.;
-        const origin = [
-            c[0] * voxel_grid_world_dim - s,
-            c[1] * voxel_grid_world_dim - s,
-            c[2] * voxel_grid_world_dim - s,
-            1
-            ]
-
-        geometry_generator.run(o, origin, scale);
-
-        if (o.num_idxes > 0) {
-          current_evaluated_blocks[c_id] = idx;
-          o.created_timestamp = time;
-        } else {
-          known_empty_blocks[c_id] = true;
-          empty_geometry_block_idxs.push(idx);
-        }
-
-        i++;
-      }
-
-    }
-
-    // t.push('draw');
+    voxel_block_group.tick(cam_xyz_pos)
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     twgl.resizeCanvasToDisplaySize(gl.canvas as HTMLCanvasElement)
@@ -318,56 +148,13 @@ const run_fn = () => {
       'cam_pos_inv': cam_pos_inv,
       'obj_pos': op,
       'obj_pos_inv_tpose': op_inv_tp,
-      'light_pos': light_pos,
-      'flat_color': false,
-      'fog_level': 0.03,
-      'max_cam_dist': (blocks_diameter / 2) * voxel_grid_world_dim,
+      'light_pos': light_pos
     });
 
-    (Object as any).keys(current_evaluated_blocks).forEach(id => {
-      const i = current_evaluated_blocks[id]
-      let o = blocks_geometry[i];
-      gl.bindVertexArray(o.vao);
-      gl.drawArrays(gl.TRIANGLES, 0, o.num_idxes);
-    });
-
-    twgl.setUniforms(phongShader, {
-      'flat_color': true,
-      'fog_level': 0.,
-      'max_cam_dist': 0,
-    });
+    voxel_block_group.draw(phongShader);
 
     if (draw_block_wireframes) {
-
-      gl.bindVertexArray(cube_wireframe.vao);
-
-      const s = voxel_grid_world_dim * 0.5;
-      const scale = twgl.m4.scaling([s, s, s]);
-
-      ;(Object as any).keys(current_evaluated_blocks).forEach(id => {
-        const c = get_voxel_block_coords(id);
-
-
-
-        const t = twgl.m4.translation([
-          (c[0] * voxel_grid_world_dim),
-          (c[1] * voxel_grid_world_dim),
-          (c[2] * voxel_grid_world_dim)
-        ])
-
-        const block_tform = twgl.m4.multiply(t, scale);
-        const block_tform_inverse = twgl.m4.transpose(twgl.m4.inverse(block_tform));
-
-        twgl.setUniforms(phongShader, {
-          'obj_pos': block_tform,
-          'obj_pos_inv_tpose': block_tform_inverse,
-        });
-
-        gl.drawElements(gl.LINES, cube_wireframe.num_idxes, gl.UNSIGNED_SHORT, 0);
-        
-
-      })
-
+      voxel_block_group.draw_wireframes(phongShader, cube_wireframe);
     }
 
   	requestAnimationFrame(render)
