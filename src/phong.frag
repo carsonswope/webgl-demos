@@ -8,6 +8,7 @@ uniform bool flat_color;
 
 uniform float fog_level;
 uniform float max_cam_dist;
+uniform vec4 lod_origin_pos;
 
 in vec4 v_color;
 in vec4 v_normal;
@@ -18,7 +19,12 @@ out vec4 outColor;
 
 void main() {
 
-  if (max_cam_dist > 0. && dist_to_cam >= max_cam_dist) discard;
+  float _dist_to_cam = 0.;
+  if (max_cam_dist > 0.) {
+    _dist_to_cam = length(v_frag_pos.xyz - lod_origin_pos.xyz);
+  }
+
+  if (max_cam_dist > 0. && _dist_to_cam >= max_cam_dist) discard;
 
   if (flat_color) {
   	outColor = v_color;
@@ -44,9 +50,21 @@ void main() {
 
   vec4 c = vec4((ambient + diffuse + specular) * v_color.xyz, 1);
 
-  if (max_cam_dist > 0.) {
-    float d2 = 1. / (max_cam_dist - dist_to_cam);
-    c.w = 1. - (d2 * fog_level);
+  // if (max_cam_dist > 0.) {
+    // dist_to_cam
+    // float d2 = 1. / length(v_frag_pos.xyz - lod_origin_pos.xyz);
+    // float d2 = 1. / (max_cam_dist - dist_to_cam);
+    // c.w = 1. - (d2 * fog_level);
+    // c.w = (dist_to_cam / max_cam_dist);
+    // c.w = 0.5;
+  // }
+
+  if (fog_level > 0.) {
+    if (dist_to_cam > 0.) {
+      c.x += fog_level * dist_to_cam;
+      c.y += fog_level * dist_to_cam;
+      c.z += fog_level * dist_to_cam;
+    }
   }
 
   outColor = c;

@@ -282,7 +282,8 @@ void main() {
 
   v_frag_pos = obj_pos * position;
 
-  dist_to_cam = length(v_frag_pos.xyz - v_cam_pos.xyz);
+  // ignore cam y for now!
+  dist_to_cam = length(v_frag_pos.xyz - vec3(v_cam_pos.x, 0, v_cam_pos.z));
 
   gl_Position = cam_proj * cam_pos_inv * v_frag_pos;
 
@@ -407,14 +408,14 @@ void main() {
 	// get world coord from invocation coord
 	vec3 c = sample_origin.xyz + (id * sample_scale.xyz);
 	
-	float n0 = texture(noise_tex, (c * 0.5)).x  * 0.02;
+	// float n0 = texture(noise_tex, (c * 1.)).x  * 0.02;
 	float n1 = texture(noise_tex, (c * 3.)).x  * 0.02;
 	float n2 = texture(noise_tex, (c * 7.1)).x * 0.012;
 	float n3 = texture(noise_tex, (c * 156.3)).x * 0.0003;
 
 	float density = c.y;
 
-	density -= n0;
+	// density -= n0;
 	density -= n1;
 	density -= n2;
 	density -= n3;
@@ -549,6 +550,8 @@ uniform vec4 light_pos;
 uniform bool flat_color;
 
 uniform float fog_level;
+uniform float max_cam_dist;
+uniform vec4 lod_origin_pos;
 
 in vec4 v_color;
 in vec4 v_normal;
@@ -559,6 +562,13 @@ out vec4 outColor;
 
 void main() {
 
+  float _dist_to_cam = 0.;
+  if (max_cam_dist > 0.) {
+    _dist_to_cam = length(v_frag_pos.xyz - lod_origin_pos.xyz);
+  }
+
+  if (max_cam_dist > 0. && _dist_to_cam >= max_cam_dist) discard;
+
   if (flat_color) {
   	outColor = v_color;
   	return;
@@ -566,7 +576,7 @@ void main() {
 
   const vec3 light_color = vec3(1., 1., 1.);
   const float ambient_strength = .2;
-  const float specular_strength = 0.8;
+  const float specular_strength = 0.9;
 
   vec3 ambient = ambient_strength * light_color;
 
@@ -578,17 +588,26 @@ void main() {
   vec3 view_dir = normalize(cam_pos.xyz - v_frag_pos.xyz);
   vec3 reflect_dir = reflect(-light_dir, norm);
 
-  // float spec = 0.;
   float spec = pow(max(dot(view_dir, reflect_dir), 0.), 64.);
   vec3 specular = specular_strength * spec * light_color;
 
   vec4 c = vec4((ambient + diffuse + specular) * v_color.xyz, 1);
 
+  // if (max_cam_dist > 0.) {
+    // dist_to_cam
+    // float d2 = 1. / length(v_frag_pos.xyz - lod_origin_pos.xyz);
+    // float d2 = 1. / (max_cam_dist - dist_to_cam);
+    // c.w = 1. - (d2 * fog_level);
+    // c.w = (dist_to_cam / max_cam_dist);
+    // c.w = 0.5;
+  // }
+
   if (fog_level > 0.) {
-  float d2 = dist_to_cam * dist_to_cam;
-    c.x += d2 * fog_level;
-    c.y += d2 * fog_level;
-    c.z += d2 * fog_level;
+    if (dist_to_cam > 0.) {
+      c.x += fog_level * dist_to_cam;
+      c.y += fog_level * dist_to_cam;
+      c.z += fog_level * dist_to_cam;
+    }
   }
 
   outColor = c;
@@ -606,12 +625,14 @@ void main() {
         <br>
         <div>Move: arrow keys/wasd</div>
         <div>Look: <button id="lock-mouse">Use mouse</button></div>
-
+        <br>
+        <div><input type="checkbox" id="block-wireframes"/><label for="block-wireframes">Draw block wireframes</label></div>
       </div>
 
       <div class="right">
           <div id="gpu">Engine: <span></span></div>
           <div><span id="fps"></span> fps</div>
+          <div><span id="pct-initialized"></span>% loaded</div>
       </div>
     
     </div>

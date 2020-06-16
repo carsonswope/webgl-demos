@@ -26,23 +26,24 @@ const run_fn = () => {
   const voxel_grid_dim = 32; // a voxel block consists of cube of voxels with this side length
   let geometry_generator = new GeometryGenerator(gl, voxel_grid_dim);
 
-  // const blocks_diameter = 5; // only items within a sphere of radius d/2 from camera/target pt. are rendered. must be odd!
-  // const max_blocks_eval_per_frame = 1;
-  // const voxel_grid_world_dim = 0.1; // every voxel block is this big in world space
 
-  const voxel_block_group = new VoxelBlockGroup(
-      geometry_generator, 
-      5, 
-      1, 
-      0.1,
-      () => new PhongObj(gl, phongShader.program, null));
+  const make_group = (diam, diam_y, max_eval, world_dim, fog) => new VoxelBlockGroup(
+    geometry_generator, diam, diam_y, max_eval, world_dim, fog, () => new PhongObj(gl, phongShader.program, null));
+
+
+  const f = 3.;
+  const voxel_block_groups = [
+    make_group(3, 1, 1, 0.12, f),
+    make_group(5, 3, 1, 0.02, f),
+  ]
+
 
   let last_time = null;
 
   let s_forward = false;
   let s_backward = false;
   let s_left = false;
-  let s_right =false;
+  let s_right = false;
 
   let draw_block_wireframes = false;
 
@@ -71,11 +72,11 @@ const run_fn = () => {
     c.requestPointerLock()
   })
 
-  let cam_xyz_pos = [0, 0.04, 0];
+  let cam_xyz_pos = [0, 0.03, 0];
   let cam_y_rot = 0.;
   let cam_x_rot = -0.35;
 
-  const cam_x_rot_min = -0.75;
+  const cam_x_rot_min = -Math.PI / 2;//-0.75;
   const cam_x_rot_max = -0.35;
 
   document.addEventListener('mousemove', (ev) => {
@@ -91,6 +92,8 @@ const run_fn = () => {
 
   const block_wireframes_checkbox = document.getElementById('block-wireframes') as HTMLInputElement;
   const fps_el = document.getElementById('fps');
+
+  const pct_initialized_el = document.getElementById('pct-initialized');
 
   const render = (time) => {
 
@@ -134,27 +137,69 @@ const run_fn = () => {
 
     const light_pos = [0, 10, 0, 1]
 
-    voxel_block_group.tick(cam_xyz_pos)
+    // eval each block group with 'target' at y=0 
+
+    // const cam_target_pos = [cam_xyz_pos[0] + 0.05, 0, cam_xyz_pos[2] + 0.05, 1]
+
+    // -z axis of cam is where it is looking!
+
+    const cam_pos_const_y = twgl.m4.multiply(twgl.m4.multiply(cam_translate, cam_rY), 
+      twgl.m4.rotationX(Math.min(-0.4, cam_x_rot)));
+
+    const cam_look_target = twgl.m4.transformPoint(cam_pos_const_y, [0, 0, -1]);
+    const cam_look_dir = twgl.v3.normalize(twgl.v3.subtract(cam_look_target, cam_xyz_pos));
+
+    const _t = -cam_xyz_pos[1] / cam_look_dir[1];
+    const cam_look_hit_plane_pt = twgl.v3.add(cam_xyz_pos, twgl.v3.mulScalar(cam_look_dir, _t));
+    const ctp = [cam_look_hit_plane_pt[0], cam_look_hit_plane_pt[1], cam_look_hit_plane_pt[2], 1]
+
+    voxel_block_groups.forEach((v, i) => { v.tick(ctp); });
+
+    const pct_initialized =
+        voxel_block_groups.map(v => v.percent_initialized()).reduce((a, b) => a + b, 0) / voxel_block_groups.length;
+
+    // debugger;
+    pct_initialized_el.innerText = (pct_initialized * 100).toFixed(1);
+
+    // console.log(pct_initialized);
+
+
+    // voxel_block_groups.forEach(v => v.tick([0, 0, 0]));
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     twgl.resizeCanvasToDisplaySize(gl.canvas as HTMLCanvasElement)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
   	gl.useProgram(phongShader.program)
+
+
     twgl.setUniforms(phongShader, {
       'cam_proj': cam_proj,
       'cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
       'v_cam_pos': [cam_coords[0], cam_coords[1], cam_coords[2], 1],
       'cam_pos_inv': cam_pos_inv,
+      'light_pos': light_pos,
       'obj_pos': op,
       'obj_pos_inv_tpose': op_inv_tp,
-      'light_pos': light_pos
     });
 
-    voxel_block_group.draw(phongShader);
 
+    gl.enable(gl.CULL_FACE)
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    voxel_block_groups.forEach(v => {
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      v.draw(phongShader)
+    })
+
+
+    // the depth buffer clearing messes this up..
     if (draw_block_wireframes) {
-      voxel_block_group.draw_wireframes(phongShader, cube_wireframe);
+      voxel_block_groups.forEach(v => {
+        v.draw_wireframes(phongShader, cube_wireframe);
+      })
     }
 
   	requestAnimationFrame(render)
