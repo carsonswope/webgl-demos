@@ -4,6 +4,8 @@ This is a WebGL2 implementation of a random terrain generation technique explain
 
 Check it out [live](https://carsonswope.github.io/webgl-demos/docs/index.html)
 
+![Screenshot](/webgl2-screenshot.png?raw=true "Screenshot")
+
 ## Local development
 
 This is a very simple npm-based appp. With webpack/gulp/typescript, everything is reduced to a single index.html entry point that loads a small stylesheet and a JS script that runs the demo. To build it locally, just run:
